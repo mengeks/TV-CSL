@@ -17,7 +17,12 @@ SCRIPT_DIR <- if (length(.fa2) && nchar(.fa2)) {
   tryCatch(normalizePath(dirname(sys.frame(1)$ofile), mustWork = FALSE),
            error = function(e) getwd())
 }
-RESULTS_DIR <- file.path(SCRIPT_DIR, "results")
+trailing_args <- commandArgs(trailingOnly = TRUE)
+RESULTS_DIR <- if (length(trailing_args) >= 1 && nchar(trailing_args[1])) {
+  normalizePath(trailing_args[1], mustWork = FALSE)
+} else {
+  file.path(SCRIPT_DIR, "results")
+}
 
 # ---- Load results ----
 # Prefer individual files so partial runs are usable

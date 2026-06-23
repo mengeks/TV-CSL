@@ -1,4 +1,5 @@
 writeups/
+refs/
 
 # History files
 .Rhistory
@@ -16,7 +17,13 @@ data/
 ## Ignore results
 tables
 results
+results_*/
 tables-and-plots
+
+## Ignore simulation logs and intermediate files
+scripts/CSF-understanding/*.log
+scripts/CSF-understanding/*.txt
+scripts/CSF-understanding/implementation-plan-raw.md
 
 # # Ignore root-level folders
 # /./results/
