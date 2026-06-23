@@ -32,6 +32,9 @@ source(file.path(SCRIPT_DIR, "01_utils_dgp.R"))
 source(file.path(SCRIPT_DIR, "02_utils_oracle.R"))
 source(file.path(SCRIPT_DIR, "03_utils_methods.R"))
 
+# ---- DGP choice: "dgp1" (Weibull log-HR) or "dgp2" (linear RMST-CATE) ----
+DGP_CHOICE <- "dgp2"   # <-- change this line to switch DGPs
+
 # ---- Simulation parameters ----
 SIM <- list(
   n_train        = 1000,
@@ -43,11 +46,12 @@ SIM <- list(
   seed_base      = 2024
 )
 
-RESULTS_DIR <- file.path(SCRIPT_DIR, "results")
+RESULTS_DIR <- file.path(SCRIPT_DIR, paste0("results_", DGP_CHOICE))
 dir.create(RESULTS_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # ---- Single MC iteration ----
-run_one_mc <- function(mc, sim = SIM, dgp = DGP_PARAMS, results_dir = RESULTS_DIR) {
+run_one_mc <- function(mc, sim = SIM, dgp = DGP_PARAMS, dgp_choice = DGP_CHOICE,
+                       results_dir = RESULTS_DIR) {
   out_file <- file.path(results_dir, sprintf("mc_iter_%03d.rds", mc))
 
   # Skip if already done (allows restarts)
@@ -60,16 +64,25 @@ run_one_mc <- function(mc, sim = SIM, dgp = DGP_PARAMS, results_dir = RESULTS_DI
   t0 <- proc.time()["elapsed"]
   msg <- function(...) message(sprintf("[MC %03d] ", mc), ..., appendLF = TRUE)
 
-  msg("Generating data")
-  d_tr <- simulate_data(sim$n_train, dgp)
-  d_te <- simulate_data(sim$n_test,  dgp)
+  msg("Generating data (", dgp_choice, ")")
+  if (dgp_choice == "dgp2") {
+    d_tr <- simulate_data_dgp2(sim$n_train, dgp)
+    d_te <- simulate_data_dgp2(sim$n_test,  dgp)
+  } else {
+    d_tr <- simulate_data(sim$n_train, dgp)
+    d_te <- simulate_data(sim$n_test,  dgp)
+  }
 
   X_tr <- d_tr$X;  U_tr <- d_tr$U
   A_tr <- d_tr$A;  D_tr <- d_tr$Delta
   X_te <- d_te$X
 
   msg("Computing true tau on test set")
-  tau_true <- compute_true_tau(X_te, sim$h, dgp)
+  tau_true <- if (dgp_choice == "dgp2") {
+    compute_true_tau_dgp2(X_te, dgp)
+  } else {
+    compute_true_tau(X_te, sim$h, dgp)
+  }
 
   res <- list(mc = mc, tau_true = tau_true, timing = list())
 
@@ -108,12 +121,17 @@ run_one_mc <- function(mc, sim = SIM, dgp = DGP_PARAMS, results_dir = RESULTS_DI
   run_method("ipcw_cf",
     quote(fit_ipcw_cf(X_tr, U_tr, D_tr, A_tr, X_te, sim$h, sim$num_trees_csf, num.threads = 1L)))
 
-  # Oracle linear CSF: explicit pattern to avoid eval/promise scoping issues
+  # Oracle linear CSF (DGP-specific)
   {
     t1_olcsf <- proc.time()["elapsed"]
     msg("Fitting oracle_lcsf")
     tryCatch({
-      fit_olcsf <- fit_linear_csf_oracle(X_tr, U_tr, D_tr, A_tr, X_te, sim$h, dgp)
+      fit_olcsf <- if (dgp_choice == "dgp2") {
+        fit_linear_csf_oracle_dgp2(X_tr, U_tr, D_tr, A_tr, X_te,
+                                   d_tr$r0, d_tr$r1, sim$h, dgp)
+      } else {
+        fit_linear_csf_oracle(X_tr, U_tr, D_tr, A_tr, X_te, sim$h, dgp)
+      }
       res$oracle_lcsf_hat  <- fit_olcsf$tau_hat
       res$oracle_lcsf      <- evaluate_metrics(fit_olcsf$tau_hat, tau_true)
       res$oracle_lcsf_beta <- fit_olcsf$beta
@@ -142,7 +160,7 @@ cl <- makeCluster(n_cores, type = "PSOCK")
 registerDoParallel(cl)
 
 # Source utilities on each worker; disable OpenMP sub-threads
-clusterExport(cl, c("SCRIPT_DIR", "RESULTS_DIR", "SIM", "DGP_PARAMS"))
+clusterExport(cl, c("SCRIPT_DIR", "RESULTS_DIR", "SIM", "DGP_PARAMS", "DGP2_PARAMS", "DGP_CHOICE"))
 invisible(clusterEvalQ(cl, {
   Sys.setenv(OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1")
   suppressPackageStartupMessages({
@@ -164,7 +182,8 @@ all_results <- foreach(
   .errorhandling = "pass",
   .verbose = FALSE
 ) %dopar% {
-  run_one_mc(mc, SIM, DGP_PARAMS, RESULTS_DIR)
+  dgp <- if (DGP_CHOICE == "dgp2") DGP2_PARAMS else DGP_PARAMS
+  run_one_mc(mc, SIM, dgp, DGP_CHOICE, RESULTS_DIR)
 }
 
 stopCluster(cl)

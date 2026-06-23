@@ -239,6 +239,35 @@ fit_linear_csf_oracle <- function(X_train, U_train, Delta_train, A_train, X_test
   list(tau_hat = as.numeric(P_test %*% beta_hat), beta = beta_hat)
 }
 
+# ---- Method 7b: Oracle Linear CSF for DGP2 ----
+# Uses compute_BH_oracle_dgp2 (analytical Q_w via exponential model).
+
+fit_linear_csf_oracle_dgp2 <- function(X_train, U_train, Delta_train, A_train, X_test,
+                                        r0_vec, r1_vec,
+                                        h, params, verbose = FALSE) {
+  BH <- compute_BH_oracle_dgp2(X_train, U_train, Delta_train, A_train,
+                                r0_vec, r1_vec, h, params, verbose)
+  B  <- BH[, "B"]
+  H  <- BH[, "H"]
+
+  ok <- is.finite(B) & is.finite(H)
+  if (sum(ok) < 10) {
+    warning("Too few valid BH rows in oracle linear CSF (DGP2)")
+    return(list(tau_hat = rep(NA_real_, nrow(X_test)), beta = c(NA, NA)))
+  }
+
+  e_hat <- efun(X_train[ok, , drop = FALSE])
+  r     <- A_train[ok] - e_hat
+  P     <- cbind(1, X_train[ok, 1])
+
+  M <- t(P) %*% (P * (r^2 * H[ok])) / sum(ok)
+  v <- colMeans(P * (r * B[ok]))
+
+  beta_hat <- tryCatch(solve(M, v), error = function(e) c(NA_real_, NA_real_))
+  P_test   <- cbind(1, X_test[, 1])
+  list(tau_hat = as.numeric(P_test %*% beta_hat), beta = beta_hat)
+}
+
 # ---- Evaluation metrics ----
 
 evaluate_metrics <- function(tau_hat, tau_true) {

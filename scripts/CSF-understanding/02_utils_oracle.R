@@ -165,3 +165,73 @@ compute_BH_oracle <- function(X, U, Delta, W,
   }
   result
 }
+
+# =============================================================
+# DGP2 oracle BH
+#
+# Event model: T(a)|x ~ Exp(r_a(x)).
+# Memoryless property gives Q_w(s|x,h) in closed form — no
+# integration grid needed, so this is much faster than DGP1 BH.
+# Censoring survival is the same Weibull model as DGP1.
+# =============================================================
+
+compute_BH_one_oracle_dgp2 <- function(i, X, U, Delta, W,
+                                        r0_vec, r1_vec,
+                                        h, params) {
+  xrow    <- X[i, ]
+  w       <- W[i]
+  u_h     <- min(U[i], h)
+  delta_h <- as.numeric(Delta[i] == 1 || U[i] >= h)
+  y_h     <- u_h
+
+  r_w  <- if (w == 1L) r1_vec[i] else r0_vec[i]
+  r0i  <- r0_vec[i]
+  r1i  <- r1_vec[i]
+
+  # Q_w(s|x,h): analytical via memoryless property of Exp
+  Q_w_vec <- function(s) ifelse(s >= h, h, s + (1 - exp(-r_w * (h - s))) / r_w)
+
+  # m(x) = e(x)*RMST_1 + (1-e(x))*RMST_0  [both analytical]
+  xmat <- matrix(xrow, nrow = 1)
+  e_xi <- as.numeric(efun(xmat))
+  m_x  <- e_xi * (1 - exp(-r1i * h)) / r1i +
+           (1 - e_xi) * (1 - exp(-r0i * h)) / r0i
+
+  # Censoring (same Weibull as DGP1)
+  sc_u  <- S_C_fun(u_h, xrow, w, params)
+  lam_u <- Lambda_C_fun(u_h, xrow, w, params)
+  H     <- 1 / sc_u - lam_u   # analytical
+
+  q_u       <- Q_w_vec(u_h)
+  eta_c     <- as.numeric(cfun(xmat)) + 0.3 * w
+  kappa_c   <- params$kappa_c
+  lambda_c  <- params$lambda_c
+  exp_eta_c <- exp(eta_c)
+
+  int_B <- 0
+  if (u_h > 1e-10) {
+    int_B <- tryCatch(
+      integrate(function(s) {
+        kappa_c * lambda_c * s^(kappa_c - 1) * exp_eta_c * (Q_w_vec(s) - m_x)
+      }, lower = 1e-10, upper = u_h, rel.tol = 1e-4, abs.tol = 1e-8)$value,
+      error = function(e) 0
+    )
+  }
+
+  B <- (q_u + delta_h * (y_h - q_u) - m_x) / sc_u - int_B
+  c(B = B, H = H)
+}
+
+compute_BH_oracle_dgp2 <- function(X, U, Delta, W, r0_vec, r1_vec,
+                                    h, params, verbose = FALSE) {
+  n      <- nrow(X)
+  result <- matrix(NA_real_, n, 2, dimnames = list(NULL, c("B", "H")))
+  for (i in seq_len(n)) {
+    if (verbose && i %% 200 == 0) cat("  BH dgp2:", i, "/", n, "\n")
+    result[i, ] <- tryCatch(
+      compute_BH_one_oracle_dgp2(i, X, U, Delta, W, r0_vec, r1_vec, h, params),
+      error = function(e) c(B = NA_real_, H = NA_real_)
+    )
+  }
+  result
+}
