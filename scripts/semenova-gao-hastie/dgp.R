@@ -54,15 +54,16 @@ oracle_nuisances <- function(dat, params = DGP_PARAMS) {
   tau  <- p$beta_true[1] + p$beta_true[2] * X[, 1]
   eta1 <- eta0 + tau
 
+  # R_fn_vec(t_vec, w): n x length(t_vec) matrix of R_w(t_k, X_i)
   # S_w(t|X) = exp(-lam0 * t * exp(eta_w(X)))
   # G_w(t|X) = exp(-lam_c * t * exp(cens_coef[1]*w + cens_coef[2]*X2))
-  R_fn <- function(t, w) {
+  R_fn_vec <- function(t_vec, w) {
     eta_w  <- eta0 + w * tau
-    S_w    <- exp(-p$lam0 * t * exp(eta_w))
     lam_cw <- p$lam_c * exp(p$cens_coef[1] * w + p$cens_coef[2] * X[, 2])
-    G_w    <- exp(-lam_cw * t)
+    S_w    <- exp(-outer(p$lam0 * exp(eta_w), t_vec))   # n x K
+    G_w    <- exp(-outer(lam_cw, t_vec))                 # n x K
     S_w * G_w
   }
 
-  list(e = e, eta0 = eta0, eta1 = eta1, R_fn = R_fn)
+  list(e = e, eta0 = eta0, eta1 = eta1, R_fn_vec = R_fn_vec)
 }

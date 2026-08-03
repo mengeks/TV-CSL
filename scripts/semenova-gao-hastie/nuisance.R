@@ -1,13 +1,16 @@
 #!/usr/bin/env Rscript
 # Nuisance estimation: propensity, outcome LP, censoring survival
 #
-# Exported functions:
-#   estimate_nuisances_crossfit(dat, n_folds)  -> list(e, eta0, eta1, R_fn)
-#   nuisances_to_riskset(t, nuis)              -> list(a_t, nu_t)  per-row at time t
+# Exported:
+#   estimate_nuisances_crossfit(dat, n_folds)
+#     -> list(e, eta0, eta1, R_fn_vec)
+#
+#   R_fn_vec(t_vec, w) returns an n x length(t_vec) matrix of
+#   R_w(t_k, X_i) = S_w(t_k|X_i) * G_w(t_k|X_i), cross-fit over folds.
+#   Called ONCE per arm from precompute_nuis_at() rather than per event time.
 
 suppressPackageStartupMessages(library(survival))
 
-# Cross-fitted nuisance estimation using parametric models
 estimate_nuisances_crossfit <- function(dat, n_folds = 2) {
   n   <- nrow(dat$X)
   X   <- dat$X
@@ -21,100 +24,76 @@ estimate_nuisances_crossfit <- function(dat, n_folds = 2) {
   eta0 <- numeric(n)
   eta1 <- numeric(n)
 
-  # Store per-fold survival model objects to compute R_fn later
-  fold_models <- vector("list", n_folds)
+  # Per-fold: store evaluation indices, linear predictors, basehaz tables
+  fold_cache <- vector("list", n_folds)
 
   for (k in seq_len(n_folds)) {
     tr <- fold != k
     ev <- fold == k
 
-    df_tr  <- data.frame(W = W[tr],  X1 = X[tr, 1], X2 = X[tr, 2],
-                         Y = Y[tr],  Del = Del[tr])
-    df_ev  <- data.frame(X1 = X[ev, 1], X2 = X[ev, 2], W = W[ev])
+    df_tr  <- data.frame(W = W[tr], X1 = X[tr, 1], X2 = X[tr, 2],
+                         Y = Y[tr], Del = Del[tr])
+    df_ev  <- data.frame(X1 = X[ev, 1], X2 = X[ev, 2])
 
     # Propensity
-    fit_e     <- glm(W ~ X1 + X2, family = binomial, data = df_tr)
-    e[ev]     <- predict(fit_e, newdata = df_ev, type = "response")
+    fit_e   <- glm(W ~ X1 + X2, family = binomial, data = df_tr)
+    e[ev]   <- predict(fit_e, newdata = df_ev, type = "response")
 
-    # Outcome LP: separate Cox models by arm to get eta0, eta1
-    df_tr0    <- df_tr[df_tr$W == 0, ]
-    df_tr1    <- df_tr[df_tr$W == 1, ]
-    fit_cox0  <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_tr0, x = TRUE)
-    fit_cox1  <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_tr1, x = TRUE)
-    eta0[ev]  <- predict(fit_cox0, newdata = df_ev, type = "lp")
-    eta1[ev]  <- predict(fit_cox1, newdata = df_ev, type = "lp")
+    # Outcome LP by arm
+    fit_cox0 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_tr[df_tr$W == 0, ])
+    fit_cox1 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_tr[df_tr$W == 1, ])
+    eta0[ev] <- predict(fit_cox0, newdata = df_ev, type = "lp")
+    eta1[ev] <- predict(fit_cox1, newdata = df_ev, type = "lp")
 
-    # Censoring survival: model 1-Del (censoring indicator) by arm
-    df_tr0c   <- df_tr; df_tr0c$Del <- 1L - df_tr0c$Del
-    fit_cens0 <- coxph(Surv(Y, Del) ~ X1 + X2,
-                       data = df_tr0c[df_tr0c$W == 0, ], x = TRUE)
-    fit_cens1 <- coxph(Surv(Y, Del) ~ X1 + X2,
-                       data = df_tr0c[df_tr0c$W == 1, ], x = TRUE)
+    # Censoring (flip Delta) by arm
+    df_cens <- df_tr; df_cens$Del <- 1L - df_cens$Del
+    fit_cen0 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_cens[df_cens$W == 0, ])
+    fit_cen1 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_cens[df_cens$W == 1, ])
 
-    fold_models[[k]] <- list(
-      ev = ev,
-      fit_cox0 = fit_cox0, fit_cox1 = fit_cox1,
-      fit_cens0 = fit_cens0, fit_cens1 = fit_cens1
+    fold_cache[[k]] <- list(
+      ev    = ev,
+      # linear predictors (computed once per fold, reused across all event times)
+      lp_s0 = predict(fit_cox0, newdata = df_ev, type = "lp"),
+      lp_s1 = predict(fit_cox1, newdata = df_ev, type = "lp"),
+      lp_g0 = predict(fit_cen0, newdata = df_ev, type = "lp"),
+      lp_g1 = predict(fit_cen1, newdata = df_ev, type = "lp"),
+      # baseline cumulative hazard tables (computed once per fold)
+      bh_s0 = basehaz(fit_cox0, centered = FALSE),
+      bh_s1 = basehaz(fit_cox1, centered = FALSE),
+      bh_g0 = basehaz(fit_cen0, centered = FALSE),
+      bh_g1 = basehaz(fit_cen1, centered = FALSE)
     )
   }
 
   e <- pmin(pmax(e, 0.02), 0.98)
 
-  # Build R_fn: R_w(t, X) = S_w(t|X) * G_w(t|X), evaluated at all n rows
-  # Uses fold-specific models to avoid data leakage
-  R_fn <- function(t, w) {
-    R_vals <- numeric(n)
+  # R_fn_vec(t_vec, w): n x K matrix, no repeated model calls
+  R_fn_vec <- function(t_vec, w) {
+    R_mat <- matrix(0, n, length(t_vec))
     for (k in seq_len(n_folds)) {
-      fm  <- fold_models[[k]]
-      ev  <- fm$ev
-      df_ev <- data.frame(X1 = X[ev, 1], X2 = X[ev, 2])
+      fc  <- fold_cache[[k]]
+      ev  <- fc$ev
+      lp_s <- if (w == 0) fc$lp_s0 else fc$lp_s1
+      lp_g <- if (w == 0) fc$lp_g0 else fc$lp_g1
+      bh_s <- if (w == 0) fc$bh_s0 else fc$bh_s1
+      bh_g <- if (w == 0) fc$bh_g0 else fc$bh_g1
 
-      fit_s <- if (w == 0) fm$fit_cox0 else fm$fit_cox1
-      fit_g <- if (w == 0) fm$fit_cens0 else fm$fit_cens1
+      H0s <- approx_cumhaz_vec(bh_s, t_vec)   # length-K vector
+      H0g <- approx_cumhaz_vec(bh_g, t_vec)
 
-      lp_s <- predict(fit_s, newdata = df_ev, type = "lp")
-      lp_g <- predict(fit_g, newdata = df_ev, type = "lp")
-
-      # Breslow cumulative baseline hazard at time t for each model
-      bh_s <- basehaz(fit_s, centered = FALSE)
-      bh_g <- basehaz(fit_g, centered = FALSE)
-      H0s_t <- approx_cumhaz(bh_s, t)
-      H0g_t <- approx_cumhaz(bh_g, t)
-
-      S_w <- exp(-H0s_t * exp(lp_s))
-      G_w <- exp(-H0g_t * exp(lp_g))
-      R_vals[ev] <- S_w * G_w
+      # outer products: n_ev x K, then element-wise product
+      S_w <- exp(-outer(exp(lp_s), H0s))
+      G_w <- exp(-outer(exp(lp_g), H0g))
+      R_mat[ev, ] <- S_w * G_w
     }
-    R_vals
+    R_mat
   }
 
-  list(e = e, eta0 = eta0, eta1 = eta1, R_fn = R_fn)
+  list(e = e, eta0 = eta0, eta1 = eta1, R_fn_vec = R_fn_vec)
 }
 
-# Linearly interpolate cumulative hazard at time t from basehaz() output
-approx_cumhaz <- function(bh, t) {
-  if (t <= bh$time[1]) return(0)
-  if (t >= bh$time[length(bh$time)]) return(bh$hazard[length(bh$hazard)])
-  approx(bh$time, bh$hazard, xout = t, rule = 2)$y
-}
-
-# Compute risk-set modified propensity a_t(X) and offset nu_t(X) at time t
-nuisances_to_riskset <- function(t, nuis) {
-  e    <- nuis$e
-  eta0 <- nuis$eta0
-  eta1 <- nuis$eta1
-  R0   <- nuis$R_fn(t, 0)
-  R1   <- nuis$R_fn(t, 1)
-
-  # Numerator / denominator of a_t
-  num  <- e * R1 * exp(eta1)
-  den  <- num + (1 - e) * R0 * exp(eta0)
-  a_t  <- num / den
-
-  # Clamp to avoid 0/1
-  a_t  <- pmin(pmax(a_t, 1e-6), 1 - 1e-6)
-
-  nu_t <- a_t * eta1 + (1 - a_t) * eta0
-
-  list(a_t = a_t, nu_t = nu_t)
+# Interpolate cumulative hazard at a vector of times from basehaz() output.
+# Prepend (0, 0) so times before the first event return 0.
+approx_cumhaz_vec <- function(bh, t_vec) {
+  approx(c(0, bh$time), c(0, bh$hazard), xout = t_vec, rule = 2)$y
 }

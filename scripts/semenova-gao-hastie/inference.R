@@ -43,13 +43,8 @@ compute_sandwich <- function(dat, basis, nuis, beta_hat, precomp) {
     dN_t    <- sum(evt_now)
     Q_sum   <- Q_sum + V_q * dN_t
 
-    # Breslow increment (using stabilized weights; S0 carries the exp(-max(theta)) factor
-    # which cancels in the ratio, so we need unscaled S0 for dLambda0)
-    ew_raw  <- exp(theta)                # unscaled for Breslow
-    S0_raw  <- sum(ew_raw)
-    dLam0   <- dN_t / S0_raw
-
-    dM      <- as.integer(evt_now[in_risk]) - ew_raw * dLam0
+    # Breslow martingale increment: exp(-max) cancels in ew/S0, so use stabilized weights
+    dM      <- as.integer(evt_now[in_risk]) - ew * dN_t / S0
     psi_mat[idx, ] <- psi_mat[idx, ] + sweep(q_c, 1, dM, "*")
   }
 

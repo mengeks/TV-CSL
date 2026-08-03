@@ -12,10 +12,32 @@
 #   theta_j(t) = nu_t(X_j) + q_j(t)' beta
 #   q_bar(t)  = sum_j Y_j(t) exp(theta_j) q_j / sum_j Y_j(t) exp(theta_j)
 
-# Pre-compute time-varying nuisances at all event times (avoids redundant calls)
+# Pre-compute time-varying nuisances at all event times.
+# Calls R_fn_vec once per arm (2 calls total) instead of once per event time.
 precompute_nuis_at <- function(dat, nuis) {
   event_times <- sort(unique(dat$Y[dat$Del == 1]))
-  nuis_at     <- lapply(event_times, function(t) nuisances_to_riskset(t, nuis))
+  K           <- length(event_times)
+
+  R0_mat <- nuis$R_fn_vec(event_times, 0)   # n x K
+  R1_mat <- nuis$R_fn_vec(event_times, 1)   # n x K
+
+  e        <- nuis$e
+  eta0     <- nuis$eta0
+  eta1     <- nuis$eta1
+  exp_eta0 <- exp(eta0)
+  exp_eta1 <- exp(eta1)
+
+  nuis_at <- vector("list", K)
+  for (k in seq_len(K)) {
+    num  <- e * R1_mat[, k] * exp_eta1
+    den  <- num + (1 - e) * R0_mat[, k] * exp_eta0
+    a_t  <- pmin(pmax(num / den, 1e-6), 1 - 1e-6)
+    nuis_at[[k]] <- list(
+      a_t  = a_t,
+      nu_t = a_t * eta1 + (1 - a_t) * eta0
+    )
+  }
+
   list(event_times = event_times, nuis_at = nuis_at)
 }
 
