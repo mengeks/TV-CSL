@@ -5,9 +5,13 @@
 #   estimate_nuisances_crossfit(dat, n_folds)
 #     -> list(e, eta0, eta1, R_fn_vec)
 #
-#   R_fn_vec(t_vec, w) returns an n x length(t_vec) matrix of
-#   R_w(t_k, X_i) = S_w(t_k|X_i) * G_w(t_k|X_i), cross-fit over folds.
-#   Called ONCE per arm from precompute_nuis_at() rather than per event time.
+# Nuisance models: pooled Cox with W as binary covariate (no interaction).
+# This uses a SHARED baseline hazard for both arms, so the LP predictions
+# at W=0 and W=1 are on the same scale — critical for a_t(X) calibration.
+# It also doubles the effective training size vs arm-specific Cox models.
+#
+# R_fn_vec(t_vec, w): n x length(t_vec) matrix of R_w(t_k, X_i).
+# Called ONCE per arm from precompute_nuis_at().
 
 suppressPackageStartupMessages(library(survival))
 
@@ -24,65 +28,59 @@ estimate_nuisances_crossfit <- function(dat, n_folds = 2) {
   eta0 <- numeric(n)
   eta1 <- numeric(n)
 
-  # Per-fold: store evaluation indices, linear predictors, basehaz tables
   fold_cache <- vector("list", n_folds)
 
   for (k in seq_len(n_folds)) {
     tr <- fold != k
     ev <- fold == k
 
-    df_tr  <- data.frame(W = W[tr], X1 = X[tr, 1], X2 = X[tr, 2],
-                         Y = Y[tr], Del = Del[tr])
-    df_ev  <- data.frame(X1 = X[ev, 1], X2 = X[ev, 2])
+    df_tr   <- data.frame(W = W[tr], X1 = X[tr, 1], X2 = X[tr, 2],
+                          Y = Y[tr],  Del = Del[tr])
+    # Evaluation frames at W=0 and W=1 for the held-out fold
+    df_ev0  <- data.frame(W = 0L, X1 = X[ev, 1], X2 = X[ev, 2])
+    df_ev1  <- data.frame(W = 1L, X1 = X[ev, 1], X2 = X[ev, 2])
 
     # Propensity
     fit_e   <- glm(W ~ X1 + X2, family = binomial, data = df_tr)
-    e[ev]   <- predict(fit_e, newdata = df_ev, type = "response")
+    e[ev]   <- predict(fit_e, newdata = df_ev0, type = "response")
 
-    # Outcome LP by arm
-    fit_cox0 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_tr[df_tr$W == 0, ])
-    fit_cox1 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_tr[df_tr$W == 1, ])
-    eta0[ev] <- predict(fit_cox0, newdata = df_ev, type = "lp")
-    eta1[ev] <- predict(fit_cox1, newdata = df_ev, type = "lp")
+    # Pooled outcome Cox: shared baseline -> LP at W=0 and W=1 are comparable
+    fit_cox  <- coxph(Surv(Y, Del) ~ X1 + X2 + W, data = df_tr)
+    eta0[ev] <- predict(fit_cox, newdata = df_ev0, type = "lp")
+    eta1[ev] <- predict(fit_cox, newdata = df_ev1, type = "lp")
 
-    # Censoring (flip Delta) by arm
-    df_cens <- df_tr; df_cens$Del <- 1L - df_cens$Del
-    fit_cen0 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_cens[df_cens$W == 0, ])
-    fit_cen1 <- coxph(Surv(Y, Del) ~ X1 + X2, data = df_cens[df_cens$W == 1, ])
+    # Pooled censoring Cox (flip Delta)
+    df_cens  <- df_tr; df_cens$Del <- 1L - df_cens$Del
+    fit_cens <- coxph(Surv(Y, Del) ~ X1 + X2 + W, data = df_cens)
 
     fold_cache[[k]] <- list(
       ev    = ev,
-      # linear predictors (computed once per fold, reused across all event times)
-      lp_s0 = predict(fit_cox0, newdata = df_ev, type = "lp"),
-      lp_s1 = predict(fit_cox1, newdata = df_ev, type = "lp"),
-      lp_g0 = predict(fit_cen0, newdata = df_ev, type = "lp"),
-      lp_g1 = predict(fit_cen1, newdata = df_ev, type = "lp"),
-      # baseline cumulative hazard tables (computed once per fold)
-      bh_s0 = basehaz(fit_cox0, centered = FALSE),
-      bh_s1 = basehaz(fit_cox1, centered = FALSE),
-      bh_g0 = basehaz(fit_cen0, centered = FALSE),
-      bh_g1 = basehaz(fit_cen1, centered = FALSE)
+      # LP at W=0 and W=1 from pooled models (computed once per fold)
+      lp_s0 = predict(fit_cox,  newdata = df_ev0, type = "lp"),
+      lp_s1 = predict(fit_cox,  newdata = df_ev1, type = "lp"),
+      lp_g0 = predict(fit_cens, newdata = df_ev0, type = "lp"),
+      lp_g1 = predict(fit_cens, newdata = df_ev1, type = "lp"),
+      # Shared baseline cumulative hazard (centered=FALSE -> baseline at W=0)
+      bh_s  = basehaz(fit_cox,  centered = FALSE),
+      bh_g  = basehaz(fit_cens, centered = FALSE)
     )
   }
 
   e <- pmin(pmax(e, 0.02), 0.98)
 
-  # R_fn_vec(t_vec, w): n x K matrix, no repeated model calls
+  # R_fn_vec(t_vec, w): n x K matrix, no repeated model/basehaz calls
   R_fn_vec <- function(t_vec, w) {
     R_mat <- matrix(0, n, length(t_vec))
     for (k in seq_len(n_folds)) {
-      fc  <- fold_cache[[k]]
-      ev  <- fc$ev
-      lp_s <- if (w == 0) fc$lp_s0 else fc$lp_s1
-      lp_g <- if (w == 0) fc$lp_g0 else fc$lp_g1
-      bh_s <- if (w == 0) fc$bh_s0 else fc$bh_s1
-      bh_g <- if (w == 0) fc$bh_g0 else fc$bh_g1
+      fc   <- fold_cache[[k]]
+      ev   <- fc$ev
+      lp_s <- if (w == 0L) fc$lp_s0 else fc$lp_s1
+      lp_g <- if (w == 0L) fc$lp_g0 else fc$lp_g1
 
-      H0s <- approx_cumhaz_vec(bh_s, t_vec)   # length-K vector
-      H0g <- approx_cumhaz_vec(bh_g, t_vec)
+      H0s <- approx_cumhaz_vec(fc$bh_s, t_vec)   # length-K, shared baseline
+      H0g <- approx_cumhaz_vec(fc$bh_g, t_vec)
 
-      # outer products: n_ev x K, then element-wise product
-      S_w <- exp(-outer(exp(lp_s), H0s))
+      S_w <- exp(-outer(exp(lp_s), H0s))           # n_ev x K
       G_w <- exp(-outer(exp(lp_g), H0g))
       R_mat[ev, ] <- S_w * G_w
     }
