@@ -1,19 +1,20 @@
 #!/usr/bin/env Rscript
 # Risk-set orthogonalized Cox partial-likelihood estimator
 #
-# Solves the orthogonal score equation via Newton-Raphson directly,
-# without expanding to counting-process format (avoids coxph interval issues).
+# Two equivalent implementations selectable via method=:
 #
-# Score (Jacobian-based stabilized):
-#   G(beta) = (1/n) sum_{k: events at t_k} [ q_i(t_k) - q_bar(t_k; beta) ]
+#   "nr"    — direct Newton-Raphson on the orthogonal PL score (default)
+#   "coxph" — expand to counting-process (start,stop,event) format and call
+#              survival::coxph(..., ties="breslow", robust=TRUE)
 #
-# where:
-#   q_j(t)    = (W_j - a_t(X_j)) p(X_j)
-#   theta_j(t) = nu_t(X_j) + q_j(t)' beta
-#   q_bar(t)  = sum_j Y_j(t) exp(theta_j) q_j / sum_j Y_j(t) exp(theta_j)
+# Both return list(beta_hat, precomp, coxph_fit) where coxph_fit is NULL
+# for method="nr".  SE/inference always use compute_sandwich() so that
+# results are directly comparable across methods.
 
-# Pre-compute time-varying nuisances at all event times.
-# Calls R_fn_vec once per arm (2 calls total) instead of once per event time.
+suppressPackageStartupMessages(library(survival))
+
+# ── Pre-compute time-varying nuisances at all event times ─────────────────────
+# Calls R_fn_vec once per arm (2 total) instead of once per event time.
 precompute_nuis_at <- function(dat, nuis) {
   event_times <- sort(unique(dat$Y[dat$Del == 1]))
   K           <- length(event_times)
@@ -41,7 +42,7 @@ precompute_nuis_at <- function(dat, nuis) {
   list(event_times = event_times, nuis_at = nuis_at)
 }
 
-# Score G(beta) — d-vector
+# ── Score G(beta) — d-vector ──────────────────────────────────────────────────
 compute_score <- function(beta, dat, basis, precomp) {
   Y   <- dat$Y;  Del <- dat$Del;  W <- dat$W
   d   <- ncol(basis)
@@ -56,7 +57,7 @@ compute_score <- function(beta, dat, basis, precomp) {
 
     q_mat <- (W[in_risk] - rs$a_t[in_risk]) * basis[in_risk, , drop = FALSE]
     theta  <- rs$nu_t[in_risk] + as.numeric(q_mat %*% beta)
-    ew     <- exp(theta - max(theta))    # log-sum-exp stabilization
+    ew     <- exp(theta - max(theta))
     S0     <- sum(ew)
     q_bar  <- colSums(ew * q_mat) / S0
 
@@ -66,7 +67,7 @@ compute_score <- function(beta, dat, basis, precomp) {
   G / nrow(basis)
 }
 
-# Jacobian dG/dbeta — d x d matrix (negative information)
+# ── Jacobian dG/dbeta — d x d matrix ─────────────────────────────────────────
 compute_jacobian <- function(beta, dat, basis, precomp) {
   Y   <- dat$Y;  Del <- dat$Del;  W <- dat$W
   d   <- ncol(basis)
@@ -94,20 +95,63 @@ compute_jacobian <- function(beta, dat, basis, precomp) {
   J / nrow(basis)
 }
 
-# Newton-Raphson solver
-fit_rso_coxph <- function(dat, basis, nuis, max_iter = 100, tol = 1e-10) {
-  precomp <- precompute_nuis_at(dat, nuis)
-  beta    <- rep(0, ncol(basis))
+# ── Expand to counting-process format (for method="coxph") ───────────────────
+# Returns one row per (subject, event-time interval) the subject is at risk.
+# Intervals are (t_{k-1}, t_k] with consecutive event times, so coxph sees
+# non-overlapping intervals per subject and handles ties="breslow" correctly.
+make_expanded <- function(dat, basis, precomp) {
+  d    <- ncol(basis)
+  K    <- length(precomp$event_times)
+  rows <- vector("list", K)
 
-  for (iter in seq_len(max_iter)) {
-    g    <- compute_score(beta, dat, basis, precomp)
-    if (max(abs(g)) < tol) break
-    J    <- compute_jacobian(beta, dat, basis, precomp)
-    step <- tryCatch(solve(J, g), error = function(e) rep(NA_real_, ncol(basis)))
-    if (anyNA(step)) break
-    if (max(abs(step)) > 2) step <- step * 2 / max(abs(step))
-    beta <- beta - step
+  for (k in seq_len(K)) {
+    t   <- precomp$event_times[k]
+    t0  <- if (k == 1L) 0 else precomp$event_times[k - 1L]
+    rs  <- precomp$nuis_at[[k]]
+    idx <- which(dat$Y >= t)
+
+    q     <- (dat$W[idx] - rs$a_t[idx]) * basis[idx, , drop = FALSE]
+    df_k  <- as.data.frame(q)
+    names(df_k) <- paste0("q", seq_len(d))
+    df_k$id    <- idx
+    df_k$start <- t0
+    df_k$stop  <- t
+    df_k$event <- as.integer(dat$Del[idx] == 1L & dat$Y[idx] == t)
+    df_k$nut   <- rs$nu_t[idx]
+    rows[[k]]  <- df_k
   }
+  do.call(rbind, rows)
+}
 
-  list(beta_hat = beta, precomp = precomp)
+# ── Main estimator ────────────────────────────────────────────────────────────
+fit_rso_coxph <- function(dat, basis, nuis,
+                          method = c("nr", "coxph"),
+                          max_iter = 100, tol = 1e-10) {
+  method  <- match.arg(method)
+  precomp <- precompute_nuis_at(dat, nuis)
+  d       <- ncol(basis)
+
+  if (method == "nr") {
+    beta <- rep(0, d)
+    for (iter in seq_len(max_iter)) {
+      g    <- compute_score(beta, dat, basis, precomp)
+      if (max(abs(g)) < tol) break
+      J    <- compute_jacobian(beta, dat, basis, precomp)
+      step <- tryCatch(solve(J, g), error = function(e) rep(NA_real_, d))
+      if (anyNA(step)) break
+      if (max(abs(step)) > 2) step <- step * 2 / max(abs(step))
+      beta <- beta - step
+    }
+    list(beta_hat = beta, precomp = precomp, coxph_fit = NULL)
+
+  } else {
+    expanded <- make_expanded(dat, basis, precomp)
+    q_terms  <- paste(paste0("q", seq_len(d)), collapse = " + ")
+    fml      <- as.formula(
+      paste0("Surv(start, stop, event) ~ ", q_terms,
+             " + offset(nut) + cluster(id)")
+    )
+    coxfit   <- coxph(fml, data = expanded, ties = "breslow")
+    list(beta_hat = coef(coxfit), precomp = precomp, coxph_fit = coxfit)
+  }
 }

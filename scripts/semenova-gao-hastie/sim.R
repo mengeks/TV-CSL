@@ -2,8 +2,9 @@
 # Monte Carlo simulation: Semenova-Gao-Hastie risk-set orthogonalized Cox PL
 #
 # Usage:
-#   Rscript sim.R                            # defaults: B=200, n=1000, oracle
-#   Rscript sim.R --n 2000 --B 100 --type crossfit --folds 2 --cores 4
+#   Rscript sim.R                                         # defaults
+#   Rscript sim.R --n 2000 --B 500 --type crossfit --folds 2 --cores 6 --method nr
+#   Rscript sim.R --n 2000 --B 500 --type crossfit --folds 2 --cores 6 --method coxph
 
 suppressPackageStartupMessages(library(survival))
 
@@ -27,18 +28,19 @@ get_arg <- function(flag, default) {
   if (length(i) && length(args) >= i + 1L) return(args[i + 1L])
   default
 }
-n_obs         <- as.integer(get_arg("--n",     1000))
-B             <- as.integer(get_arg("--B",      200))
-nuisance_type <- get_arg("--type",  "oracle")
-n_folds       <- as.integer(get_arg("--folds",    2))
-n_cores       <- as.integer(get_arg("--cores",    1))
+n_obs         <- as.integer(get_arg("--n",      1000))
+B             <- as.integer(get_arg("--B",       200))
+nuisance_type <- get_arg("--type",   "oracle")
+n_folds       <- as.integer(get_arg("--folds",     2))
+n_cores       <- as.integer(get_arg("--cores",     1))
+est_method    <- get_arg("--method", "nr")          # "nr" or "coxph"
 
 beta_true <- DGP_PARAMS$beta_true
 d         <- length(beta_true)
 
 cat(sprintf(
-  "\n=== Semenova-Gao-Hastie Cox PL ===\n  n=%d  B=%d  nuisances=%s  folds=%d\n\n",
-  n_obs, B, nuisance_type, n_folds
+  "\n=== Semenova-Gao-Hastie Cox PL ===\n  n=%d  B=%d  nuisances=%s  folds=%d  method=%s\n\n",
+  n_obs, B, nuisance_type, n_folds, est_method
 ))
 
 # ── one replication (importable by mclapply workers) ──────────────────────────
@@ -56,7 +58,7 @@ run_rep <- function(i) {
     estimate_nuisances_crossfit(dat, n_folds = n_folds)
   }
 
-  res  <- fit_rso_coxph(dat, basis, nuis)
+  res  <- fit_rso_coxph(dat, basis, nuis, method = est_method)
   beta <- res$beta_hat
   svar <- compute_sandwich(dat, basis, nuis, beta, res$precomp)
 
