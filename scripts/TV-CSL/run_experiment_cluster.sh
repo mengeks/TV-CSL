@@ -1,31 +1,39 @@
 #!/bin/bash
-#SBATCH -J fit_model         # Job name
-#SBATCH -o scripts/TV-CSL/logs/fit_model_%A_%a.out   # output and error in one file
-#SBATCH -p sapphire           # Partition (queue) name
-#SBATCH -c 1              # Number of cores
-#SBATCH --array=1-100  # Size of the array
-#SBATCH --mem=1G          # Memory in GB
-#SBATCH -t 07:30:00         # Runtime (hours:minutes:seconds)
+#SBATCH -J TV_CSL_sim
+#SBATCH -o scripts/TV-CSL/logs/TV_CSL_%A_%a.out
+#SBATCH -e scripts/TV-CSL/logs/TV_CSL_%A_%a.err
+#SBATCH -c 1
+#SBATCH --mem=16G
+#SBATCH -t 24:00:00
+#SBATCH --array=1-1000
 
-# module load R/4.2.2-fasrc01
-# export R_LIBS_USER=/n/home01/xmeng1/R/ifxrstudio/RELEASE_3_18
+project_dir="/homes2/xmeng/TV-CSL"
+json_file="${project_dir}/scripts/TV-CSL/params-cluster.json"
 
-# Using singularity
-my_packages=${HOME}/R/ifxrstudio/RELEASE_3_18
-rstudio_singularity_image="/n/singularity_images/informatics/ifxrstudio/ifxrstudio:RELEASE_3_18.sif"
+module load R/4.3.2
 
-json_file=$1
-verbose=${2:-0}
+mkdir -p "${project_dir}/scripts/TV-CSL/logs"
+mkdir -p "${project_dir}/scripts/TV-CSL/results/temp"
 
-R=$(jq '.R' $json_file)
+echo "Config:    ${json_file}"
+echo "Iteration: ${SLURM_ARRAY_TASK_ID}"
+cd "${project_dir}"
 
+for n in 200 500 1000 2000; do
+  for eta_type in "linear" "non-linear"; do
+    echo "  n=${n}  eta_type=${eta_type}"
+    Rscript -e "
+      source('scripts/TV-CSL/TV-CSL-runner.R')
+      run_experiment_iteration(
+        i        = ${SLURM_ARRAY_TASK_ID},
+        json_file = '${json_file}',
+        eta_type  = '${eta_type}',
+        HTE_type  = 'linear',
+        n         = ${n},
+        verbose   = 1
+      )
+    "
+  done
+done
 
-log_dir="/n/holylabs/LABS/pillai_lab/Users/xmeng1/CausalSurvival/scripts/TV-CSL/results/"
-mkdir -p "$log_dir"
-
-export json_file verbose log_dir
-
-singluarity_command="singularity exec --cleanenv --env R_LIBS_USER=${my_packages} ${rstudio_singularity_image}"
-
-echo "Running iteration $SLURM_ARRAY_TASK_ID with verbose level $verbose" # this goes to the .out
-$singluarity_command Rscript -e "source('scripts/TV-CSL/TV-CSL-runner.R'); run_experiment_iteration(${SLURM_ARRAY_TASK_ID}, '$json_file', $verbose)" > $log_dir/log_iteration_${SLURM_ARRAY_TASK_ID}.txt 2>&1
+echo "Finished iteration ${SLURM_ARRAY_TASK_ID}"

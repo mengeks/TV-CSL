@@ -1,0 +1,33 @@
+{
+  "R": 1000,
+  "K": 5,
+  "methods": {
+    "cox": {
+      "enabled": false,
+      "run_time_varying": [true],
+      "model_specifications": ["correctly-specified"]
+    },
+    "s_cox": {
+      "enabled": true,
+      "regressor_specs": ["linear", "complex"],
+      "HTE_specs": ["linear"]
+    },
+    "lasso": {
+      "enabled": true,
+      "regressor_specs": ["linear", "complex"],
+      "lasso_types": ["S-lasso"],
+      "HTE_specs": ["linear"]
+    },
+    "TV_CSL": {
+      "enabled": true,
+      "prop_score_specs": [
+        "cox-linear-censored-only",
+        "cox-intercept-only"
+      ],
+      "regressor_specs": ["linear", "complex"],
+      "lasso_types": ["S-lasso"],
+      "HTE_specs": ["linear"],
+      "final_model_methods": ["lasso_coxph"]
+    }
+  }
+}

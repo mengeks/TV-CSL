@@ -64,18 +64,20 @@ generate_output_folder_heart_transplant <-
 #' 
 #' @return The full path of the saved CSV file
 generate_output_path <- function(results_dir = "scripts/TV-CSL/results/",
-                                 is_running_cox = F, 
-                                 is_running_lasso, 
-                                 is_running_TV_CSL, 
-                                 eta_type, 
-                                 HTE_type, 
-                                 n, 
-                                 i, 
+                                 is_running_cox = FALSE,
+                                 is_running_lasso = FALSE,
+                                 is_running_s_cox = FALSE,
+                                 is_running_TV_CSL = FALSE,
+                                 eta_type,
+                                 HTE_type,
+                                 n,
+                                 i,
                                  seed_value) {
-  
+
   method_setting <- paste0(
-    ifelse(is_running_cox, "cox_", ""),
-    ifelse(is_running_lasso, "lasso_", ""),
+    ifelse(is_running_cox,    "cox_",    ""),
+    ifelse(is_running_lasso,  "lasso_",  ""),
+    ifelse(is_running_s_cox,  "s-cox_",  ""),
     ifelse(is_running_TV_CSL, "TV-CSL_", "")
   )
 

@@ -1,7 +1,7 @@
 library(survival)
 library(glmnet)
 library(tidyverse)
-source(here::here("R/cox-loglik.R"))
+source(here::here("R/old/cox-loglik.R"))
 
 
 #' Estimate Cox model
@@ -808,10 +808,55 @@ run_lasso_estimation <- function(
         
       } # End looping lasso_types
     } # End looping regressor_specs
-  
+
   return(results)
 }
 
+
+#' Run S-Cox Estimation
+#'
+#' Runs the naive single Cox model (S-Cox) for multiple regressor/HTE-spec configs.
+#' S-Cox fits one time-varying Cox model with W as a predictor (no propensity debiasing).
+#'
+#' @param single_data Data frame with original survival data.
+#' @param i Iteration index (used to locate the held-out test dataset).
+#' @param methods_s_cox List with `regressor_specs` and `HTE_specs`.
+#' @param HTE_type Type of HTE ("constant", "linear", ...).
+#' @param eta_type Type of baseline hazard ("linear", "non-linear", ...).
+#' @return A list of results per configuration containing MSE and time_taken.
+#' @export
+run_s_cox_estimation <- function(single_data, i, methods_s_cox, HTE_type, eta_type) {
+  results <- list()
+  n <- nrow(single_data)
+  test_data <-
+    read_single_simulation_data(
+      n = n, i = i + 100,
+      eta_type = eta_type, HTE_type = HTE_type
+    )$data
+  train_data <- preprocess_data(single_data, run_time_varying = TRUE)
+
+  for (regressor_spec in methods_s_cox$regressor_specs) {
+    for (HTE_spec in methods_s_cox$HTE_specs) {
+      config_name <- paste0("regressor-spec-", regressor_spec, "_HTE-spec-", HTE_spec)
+      start_time <- Sys.time()
+
+      s_cox_ret <- S_cox(
+        train_data    = train_data,
+        test_data     = test_data,
+        regressor_spec = regressor_spec,
+        HTE_spec      = HTE_spec
+      )
+
+      end_time <- Sys.time()
+      time_taken <- as.numeric(difftime(end_time, start_time, units = "secs"))
+
+      results[[config_name]] <- list(MSE = s_cox_ret$MSE, time_taken = time_taken)
+      print(paste0("S-Cox config: ", config_name,
+                   "; MSE: ", s_cox_ret$MSE, "; time: ", time_taken, "s"))
+    }
+  }
+  return(results)
+}
 
 
 #' Run TV_CSL Estimation
@@ -971,40 +1016,31 @@ TV_CSL_nuisance <- function(fold_train,
                             id_var = "id") {
   
   # 1. Estimate the propensity score
-  if (grepl("^cox", prop_score_spec)) {
-    if  (prop_score_spec == "cox-linear-all-data"){
+  if (prop_score_spec == "cox-intercept-only") {
+    # Intercept-only misspecification: no covariates used.
+    # Everyone receives the same linear predictor (0), so the propensity score
+    # is purely a function of time: P(A <= t) = 1 - exp(-t).
+    alpha_estimate <- 0
+  } else if (grepl("^cox", prop_score_spec)) {
+    if (prop_score_spec == "cox-linear-all-data") {
       df_prop_score <- train_data_original
-    }else{
+    } else {
       df_prop_score <- train_data_original %>% filter(Delta == 1)
     }
-    
-    # if (prop_score_spec == "cox-linear-censored-only") {
-    #   df_prop_score <- train_data_original %>% filter(Delta == 1)
-    # }else if (prop_score_spec == "cox-linear-all-data") {
-    #   df_prop_score <- train_data_original
-    # }
-    
+
     if (prop_score_spec == "cox-linear-mis-specification") {
       formula <- as.formula("Surv(U_A, Delta_A) ~ X.1")
     } else {
       num_covariates <- ncol(df_prop_score %>% select(starts_with("X.")))
-      
       covariate_terms <- paste("X.", 1:num_covariates, sep = "", collapse = " + ")
       formula <- as.formula(paste("Surv(U_A, Delta_A) ~", covariate_terms))
-      # formula <- as.formula("Surv(U_A, Delta_A) ~ X.1 + X.2 + X.3")
     }
-    
-    treatment_model <- coxph(formula, 
-                             data = df_prop_score, 
-                             ties = "breslow")
-    
-    # treatment_model <- coxph(Surv(U_A, Delta_A) ~ X.1 + X.2 + X.3, 
-    #                          data = df_prop_score, 
-    #                          ties = "breslow")
+
+    treatment_model <- coxph(formula, data = df_prop_score, ties = "breslow")
     alpha_estimate <- treatment_model$coefficients
-    
-  }else {
-    stop(paste0("Unknown prop_score_spec."))
+
+  } else {
+    stop(paste0("Unknown prop_score_spec: ", prop_score_spec))
   }
   
   # 2. Obtain the propensity score at each interval
@@ -1074,12 +1110,14 @@ TV_CSL_nuisance <- function(fold_train,
     ungroup()
 
   print(paste("alpha_estimate: ", alpha_estimate))
-  # test_X <- cbind(fold_test_final$X.1, fold_test_final$X.2, fold_test_final$X.3)
-  if (prop_score_spec == "cox-linear-mis-specification") {
+  if (prop_score_spec == "cox-intercept-only") {
+    # Zero matrix: everyone gets linear predictor 0, so prop score = 1 - exp(-t)
+    test_X <- matrix(0, nrow = nrow(fold_test_final), ncol = 1)
+    alpha_estimate <- 0
+  } else if (prop_score_spec == "cox-linear-mis-specification") {
     test_X <- cbind(fold_test_final$X.1)
   } else {
     test_X <- as.matrix(fold_test_final %>% select(starts_with("X.")))
-    # test_X <- cbind(fold_test_final$X.1, fold_test_final$X.2, fold_test_final$X.3)
   }
   prop_scores <- calculate_eX(
     alpha_estimate = alpha_estimate, 
