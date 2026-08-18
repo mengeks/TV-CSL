@@ -216,6 +216,8 @@ run_experiment_iteration <-
 
   if (verbose >= 1)
     message("Results for iteration ", i, " saved to ", result_csv_file)
+
+  invisible(result_df)
 }
 
 

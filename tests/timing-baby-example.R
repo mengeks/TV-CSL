@@ -69,7 +69,7 @@ cat(sprintf(" n=%d | eta=%s | HTE=%s | iter=1 | K=2\n", n, eta_type, HTE_type))
 cat("=================================================================\n\n")
 
 t <- system.time({
-  run_experiment_iteration(
+  results <- run_experiment_iteration(
     i         = 1,
     json_file  = tmp_json,
     eta_type   = eta_type,
@@ -78,6 +78,34 @@ t <- system.time({
     verbose    = 1
   )
 })
+
+# ---- 4. Print comparison table ----------------------------------------------
+cat("\n=================================================================\n")
+cat(" Results comparison\n")
+cat("=================================================================\n")
+
+# Shorten Specification to the essential parts for display
+shorten_spec <- function(method, spec) {
+  if (method == "TV_CSL") {
+    eta  <- ifelse(grepl("regressor-spec-complex", spec), "complex", "linear")
+    prop <- ifelse(grepl("intercept-only", spec), "intercept-only", "correct")
+    sprintf("eta=%-7s  prop=%s", eta, prop)
+  } else {
+    ifelse(grepl("complex", spec), "complex", "linear ")
+  }
+}
+
+results$Spec_Short <- mapply(shorten_spec, results$Method, results$Specification)
+
+cat(sprintf("%-8s  %-36s  %8s  %8s\n", "Method", "Specification", "MSE", "Time(s)"))
+cat(strrep("-", 68), "\n")
+for (k in seq_len(nrow(results))) {
+  cat(sprintf("%-8s  %-36s  %8.4f  %8.3f\n",
+              results$Method[k],
+              results$Spec_Short[k],
+              results$MSE_Estimate[k],
+              results$Time_Taken[k]))
+}
 
 cat("\n=================================================================\n")
 cat(" Timing summary\n")
