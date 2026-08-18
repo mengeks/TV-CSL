@@ -1,6 +1,18 @@
 {
   "R": 1000,
   "K": 5,
+  "datagen": {
+    "is_time_varying": true,
+    "light_censoring": false,
+    "lambda_C": 0.1,
+    "p": 3,
+    "X_distribution": "normal",
+    "X_cov_type": "identity",
+    "tx_difficulty": "simple",
+    "linear_HTE_multiplier": 1,
+    "linear_intercept": 0,
+    "linear_slope_multiplier": 2.5
+  },
   "methods": {
     "cox": {
       "enabled": false,

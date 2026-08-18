@@ -2,7 +2,22 @@ library(jsonlite)
 suppressPackageStartupMessages(library(tidyverse))
 
 source("R/old/data-handler.R")
+source("R/datagen-helper.R")
 source("scripts/TV-CSL/time-varying-estimate.R")
+
+
+ensure_data_exists <- function(i, n, eta_type, HTE_type, datagen_params) {
+  data_dir <- here::here("data", paste0(eta_type, "_", HTE_type))
+  dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
+  fpath <- file.path(data_dir, paste0("sim_data_", i, "_n_", n, ".rds"))
+  if (!file.exists(fpath)) {
+    message(sprintf("Dataset missing — generating: i=%d, n=%d, eta=%s, HTE=%s",
+                    i, n, eta_type, HTE_type))
+    params <- c(datagen_params, list(eta_type = eta_type, HTE_type = HTE_type))
+    generate_and_save_data(i = i, n = n, path_for_sim_data = data_dir,
+                           params = params, verbose = 0)
+  }
+}
 
 
 #' Run a Single Iteration of the Experiment and Save Results to CSV
@@ -22,6 +37,7 @@ run_experiment_iteration <-
   config  <- fromJSON(json_file)
   methods <- config$methods
   K       <- ifelse(is.null(config$K), 5, config$K)
+  datagen_params <- config$datagen
 
   input_setting <- paste0(eta_type, "_", HTE_type)
   seed_value    <- 123 + 11 * i
@@ -32,6 +48,10 @@ run_experiment_iteration <-
     message("n: ", n, "\neta_type: ", eta_type, "\nHTE_type: ", HTE_type,
             "\nK: ", K, "\nSeed: ", seed_value)
   }
+
+  # ---- Ensure data exists (generate on-the-fly if missing) ------------------
+  ensure_data_exists(i,       n, eta_type, HTE_type, datagen_params)
+  ensure_data_exists(i + 100, n, eta_type, HTE_type, datagen_params)
 
   # ---- Load data ------------------------------------------------------------
   start_time  <- Sys.time()
