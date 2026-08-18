@@ -789,10 +789,13 @@ run_lasso_estimation <- function(
               n = n
             )
             
-            save_lasso_beta(lasso_ret = lasso_ret, 
-                            output_folder = output_folder, 
-                            i = i, 
-                            config_name = config_name) 
+            save_lasso_beta(lasso_ret = lasso_ret,
+                            output_folder = output_folder,
+                            i = i,
+                            lasso_type = lasso_type,
+                            eta_spec = regressor_spec,
+                            HTE_spec = HTE_spec,
+                            prop_score_spec = "NA")
             
             
             results[[config_name]] <- list(
