@@ -237,6 +237,76 @@ run_experiment_iteration <-
   if (verbose >= 1)
     message("Results for iteration ", i, " saved to ", result_csv_file)
 
+  # ---- Build and save inference data ----------------------------------------
+  make_inference_rows <- function(method, specification, beta_HTE,
+                                  se_naive, se_sandwich) {
+    d <- length(beta_HTE)
+    data.frame(
+      Method        = method,
+      Specification = specification,
+      coef_idx      = seq_len(d),
+      beta          = beta_HTE,
+      se_naive      = se_naive,
+      se_sandwich   = if (is.null(se_sandwich)) rep(NA_real_, d) else se_sandwich,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  inference_rows <- list()
+
+  if (is_running_lasso) {
+    for (config_name in names(lasso_results)) {
+      r <- lasso_results[[config_name]]
+      if (!is.null(r$beta_HTE)) {
+        inference_rows[[length(inference_rows) + 1]] <- make_inference_rows(
+          method        = "Lasso",
+          specification = config_name,
+          beta_HTE      = r$beta_HTE,
+          se_naive      = r$se_HTE,
+          se_sandwich   = NULL
+        )
+      }
+    }
+  }
+
+  if (is_running_s_cox) {
+    for (config_name in names(s_cox_results)) {
+      r <- s_cox_results[[config_name]]
+      if (!is.null(r$beta_HTE)) {
+        inference_rows[[length(inference_rows) + 1]] <- make_inference_rows(
+          method        = "S-Cox",
+          specification = config_name,
+          beta_HTE      = r$beta_HTE,
+          se_naive      = r$se_HTE,
+          se_sandwich   = NULL
+        )
+      }
+    }
+  }
+
+  if (is_running_TV_CSL) {
+    for (config_name in names(TV_CSL_results)) {
+      r <- TV_CSL_results[[config_name]]
+      if (!is.null(r$beta_HTE)) {
+        inference_rows[[length(inference_rows) + 1]] <- make_inference_rows(
+          method        = "TV_CSL",
+          specification = config_name,
+          beta_HTE      = r$beta_HTE,
+          se_naive      = r$se_naive,
+          se_sandwich   = r$se_sandwich
+        )
+      }
+    }
+  }
+
+  if (length(inference_rows) > 0) {
+    inference_df <- do.call(rbind, inference_rows)
+    inference_csv_file <- sub("\\.csv$", "_inference.csv", result_csv_file)
+    write.csv(inference_df, inference_csv_file, row.names = FALSE)
+    if (verbose >= 1)
+      message("Inference results saved to ", inference_csv_file)
+  }
+
   invisible(result_df)
 }
 

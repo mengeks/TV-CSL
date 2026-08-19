@@ -218,31 +218,39 @@ S_cox <- function(train_data,
   }
   
   MSE <- mean((HTE_est - HTE_true)^2)
-  
+
   if (verbose == 2){
     print("MSE:")
     print(MSE)
   }
-  
+
+  # Inference: SE for beta_HTE from vcov of the joint coxph model
+  vcov_full <- vcov(m)
+  idx_HTE   <- (n_transformed_X + 1):nrow(vcov_full)
+  vcov_HTE  <- vcov_full[idx_HTE, idx_HTE, drop = FALSE]
+  se_HTE    <- sqrt(diag(vcov_HTE))
+
   ret <- list(
     m = m,
     m_beta = m_beta,
     beta_HTE = beta_HTE,
     beta_eta_0 = beta_eta_0,
     y_0_pred = y_0_pred,
-    y_1_pred = y_1_pred, 
+    y_1_pred = y_1_pred,
     HTE_est = HTE_est,
     HTE_true = HTE_true,
-    MSE = MSE
+    MSE = MSE,
+    se_HTE   = se_HTE,
+    vcov_HTE = vcov_HTE
   )
-  
+
   if (verbose >= 1){
     print("m_beta:")
     print(m_beta)
     print("beta_HTE:")
     print(beta_HTE)
   }
-  
+
   class(ret) <- "scox"
   ret
 }
@@ -478,19 +486,33 @@ S_lasso <- function(train_data,
     print( "MSE: ")
     print( MSE )
   }
-  
+
+  # Inference: SE for beta_HTE.
+  # Only available for the unpenalized coxph path (linear+linear); NA otherwise.
+  if (HTE_spec == "linear" && regressor_spec == "linear") {
+    vcov_full <- vcov(m)
+    idx_HTE   <- (n_X_eta + 1):nrow(vcov_full)
+    vcov_HTE  <- vcov_full[idx_HTE, idx_HTE, drop = FALSE]
+    se_HTE    <- sqrt(diag(vcov_HTE))
+  } else {
+    se_HTE   <- rep(NA_real_, length(beta_HTE))
+    vcov_HTE <- NULL
+  }
+
   ret <- list(
     m = m,
     m_beta = m_beta,
     beta_HTE = beta_HTE,
     beta_eta_0 = beta_eta_0,
     y_0_pred = y_0_pred,
-    y_1_pred = y_1_pred, 
+    y_1_pred = y_1_pred,
     HTE_est = HTE_est,
     HTE_true = HTE_true,
-    MSE = MSE
+    MSE = MSE,
+    se_HTE   = se_HTE,
+    vcov_HTE = vcov_HTE
   )
-  
+
   if (verbose >= 1){
     print("m_beta for S-lasso: ")
     print(m_beta)
@@ -799,10 +821,12 @@ run_lasso_estimation <- function(
             
             
             results[[config_name]] <- list(
-              HTE_est = lasso_ret$HTE_est,
+              HTE_est  = lasso_ret$HTE_est,
               HTE_true = lasso_ret$HTE_true,
-              MSE = lasso_ret$MSE,
-              time_taken = time_taken
+              MSE      = lasso_ret$MSE,
+              time_taken = time_taken,
+              beta_HTE = lasso_ret$beta_HTE,
+              se_HTE   = lasso_ret$se_HTE
             )
           }
         }else{
@@ -853,7 +877,12 @@ run_s_cox_estimation <- function(single_data, i, methods_s_cox, HTE_type, eta_ty
       end_time <- Sys.time()
       time_taken <- as.numeric(difftime(end_time, start_time, units = "secs"))
 
-      results[[config_name]] <- list(MSE = s_cox_ret$MSE, time_taken = time_taken)
+      results[[config_name]] <- list(
+        MSE      = s_cox_ret$MSE,
+        time_taken = time_taken,
+        beta_HTE = s_cox_ret$beta_HTE,
+        se_HTE   = s_cox_ret$se_HTE
+      )
       print(paste0("S-Cox config: ", config_name,
                    "; MSE: ", s_cox_ret$MSE, "; time: ", time_taken, "s"))
     }
@@ -1021,9 +1050,10 @@ TV_CSL_nuisance <- function(fold_train,
   # 1. Estimate the propensity score
   if (prop_score_spec == "cox-intercept-only") {
     # Intercept-only misspecification: no covariates used.
-    # Everyone receives the same linear predictor (0), so the propensity score
-    # is purely a function of time: P(A <= t) = 1 - exp(-t).
     alpha_estimate <- 0
+  } else if (prop_score_spec == "cox-risk-set-adjusted") {
+    # Risk-set-adjusted propensity: estimated below after fold_test_final is built.
+    alpha_estimate <- NULL
   } else if (grepl("^cox", prop_score_spec)) {
     if (prop_score_spec == "cox-linear-all-data") {
       df_prop_score <- train_data_original
@@ -1112,25 +1142,38 @@ TV_CSL_nuisance <- function(fold_train,
     mutate(Delta = if_else(tstop < max(tstop), 0, Delta)) %>%
     ungroup()
 
-  print(paste("alpha_estimate: ", alpha_estimate))
-  if (prop_score_spec == "cox-intercept-only") {
-    # Zero matrix: everyone gets linear predictor 0, so prop score = 1 - exp(-t)
-    test_X <- matrix(0, nrow = nrow(fold_test_final), ncol = 1)
-    alpha_estimate <- 0
-  } else if (prop_score_spec == "cox-linear-mis-specification") {
-    test_X <- cbind(fold_test_final$X.1)
+  if (prop_score_spec == "cox-risk-set-adjusted") {
+    # Risk-set-adjusted propensity score (Neyman-orthogonal version).
+    # eta_0 and eta_1 on fold_test_final come from the S-lasso/T-lasso first stage.
+    # π_R(t,x) = P(W(t)=1 | at-risk, X) estimated by logistic on the nuisance fold
+    # (all rows of fold_train are at-risk by pseudo-dataset construction).
+    # a_0(t,x) = expit(logit(π_R(t,x)) + eta_1(x) - eta_0(x))
+    num_cov  <- ncol(fold_train %>% select(starts_with("X.")))
+    cov_str  <- paste0("X.", 1:num_cov, collapse = " + ")
+    pi_R_mod <- glm(as.formula(paste("W ~ tstart +", cov_str)),
+                    family = binomial, data = fold_train)
+    logit_pi_R <- predict(pi_R_mod, newdata = fold_test_final, type = "link")
+    eta_diff   <- fold_test_final$eta_1 - fold_test_final$eta_0
+    a0_hat     <- plogis(logit_pi_R + eta_diff)
+    fold_test_final <- fold_test_final %>% mutate(a_t_X = a0_hat)
   } else {
-    test_X <- as.matrix(fold_test_final %>% select(starts_with("X.")))
+    print(paste("alpha_estimate: ", alpha_estimate))
+    if (prop_score_spec == "cox-intercept-only") {
+      test_X         <- matrix(0, nrow = nrow(fold_test_final), ncol = 1)
+      alpha_estimate <- 0
+    } else if (prop_score_spec == "cox-linear-mis-specification") {
+      test_X <- cbind(fold_test_final$X.1)
+    } else {
+      test_X <- as.matrix(fold_test_final %>% select(starts_with("X.")))
+    }
+    prop_scores <- calculate_eX(
+      alpha_estimate = alpha_estimate,
+      X = test_X,
+      t = fold_test_split$tstop
+    )
+    fold_test_final <- fold_test_final %>% mutate(a_t_X = prop_scores)
   }
-  prop_scores <- calculate_eX(
-    alpha_estimate = alpha_estimate, 
-    X = test_X,
-    t = fold_test_split$tstop
-  )
-  
-  fold_test_final <- fold_test_final %>%
-    mutate(a_t_X = prop_scores)
-  
+
   fold_test_final <- fold_test_final %>%
     mutate(nu_X = a_t_X * eta_1 + (1 - a_t_X) * eta_0)
   
@@ -1173,6 +1216,20 @@ fit_TV_CSL <- function(fold_causal_fitted,
         init = beta_HTE_first_stage
       )
       beta_HTE <- coef(final_model)
+
+      # Inference quantities: subject-level score residuals and vcov.
+      # residuals(type="score") is one row per pseudo-row; sum within subject.
+      vcov_k    <- vcov(final_model)
+      info_k    <- solve(vcov_k)
+      score_raw <- residuals(final_model, type = "score")
+      if (!is.matrix(score_raw)) score_raw <- matrix(score_raw, ncol = 1)
+      score_df  <- as.data.frame(score_raw)
+      score_df$id <- fold_causal_fitted$id
+      score_subj <- score_df %>%
+        group_by(id) %>%
+        summarise(across(everything(), sum), .groups = "drop") %>%
+        select(-id) %>%
+        as.matrix()
     }
     
     
@@ -1239,13 +1296,21 @@ fit_TV_CSL <- function(fold_causal_fitted,
   }
   
   HTE_est <- as.vector(test_regressor_HTE %*% beta_HTE)
-  
+
+  # Collect inference objects if available (only for linear coxph path)
+  if (!exists("vcov_k"))    vcov_k    <- NULL
+  if (!exists("info_k"))    info_k    <- NULL
+  if (!exists("score_subj")) score_subj <- NULL
+
   ret <- list(
-    HTE_est = HTE_est,
-    beta_HTE = beta_HTE,
-    final_model_method = final_model_method
+    HTE_est    = HTE_est,
+    beta_HTE   = beta_HTE,
+    final_model_method = final_model_method,
+    vcov_k     = vcov_k,
+    info_k     = info_k,
+    score_subj = score_subj
   )
-  
+
   return(ret)
 }
 
@@ -1319,6 +1384,7 @@ TV_CSL <- function(train_data,
   
   # Perform K-fold cross-fitting
   first_stage_lassos <- list()
+  fit_TV_CSL_rets    <- list()   # store per-fold fit for inference
   for (k in 1:K) {
     
     # Get IDs for nuisance and causal splits
@@ -1400,12 +1466,13 @@ TV_CSL <- function(train_data,
     }
     
     fit_TV_CSL_ret <- fit_TV_CSL(
-      fold_causal_fitted = fold_causal_fitted, 
+      fold_causal_fitted = fold_causal_fitted,
       test_data = test_data,
       HTE_spec = HTE_spec,
       beta_HTE_first_stage = beta_HTE_first_stage,
       final_model_method = final_model_method
     )
+    fit_TV_CSL_rets[[k]] <- fit_TV_CSL_ret
     
     
     fit_TV_CSL_ret$beta_eta_0 <- 
@@ -1460,28 +1527,56 @@ TV_CSL <- function(train_data,
   
   # Average HTE estimates across folds
   beta_HTE <- rowMeans(beta_HTEs, na.rm = TRUE)
-  HTE_est <- rowMeans(HTE_ests, na.rm = TRUE)
+  HTE_est  <- rowMeans(HTE_ests,  na.rm = TRUE)
   HTE_true <- test_data$HTE
-  
-  # Calculate MSE of the first stage, too
-  
-  # Calculate mean squared error (MSE)
-  MSE <- mean((HTE_true - HTE_est)^2)
-  
-  # Time taken for the cross-fitting process
-  time_taken <- Sys.time() - start_time
-  
-  # Return results as a list
+  MSE      <- mean((HTE_true - HTE_est)^2)
+  time_taken <- as.numeric(Sys.time() - start_time, units = "secs")
+
+  # ---- Inference -------------------------------------------------------
+  # Only computed when all folds used the linear coxph path.
+  has_inference <- !is.null(fit_TV_CSL_rets[[1]]$vcov_k)
+
+  if (has_inference) {
+    vcov_list  <- lapply(fit_TV_CSL_rets, `[[`, "vcov_k")
+    info_list  <- lapply(fit_TV_CSL_rets, `[[`, "info_k")
+    score_list <- lapply(fit_TV_CSL_rets, `[[`, "score_subj")
+
+    # Naive SE: Var(beta_hat) = Var((1/K) sum beta_k) = (1/K^2) sum Vcov_k
+    vcov_naive <- Reduce("+", vcov_list) / K^2
+    se_naive   <- sqrt(diag(vcov_naive))
+
+    # Sandwich SE: stack subject-level scores across folds
+    all_scores <- do.call(rbind, score_list)   # n_subjects x d
+    n_subj     <- nrow(all_scores)
+    Sigma_hat  <- t(all_scores) %*% all_scores / n_subj
+    # J_hat = (1/n) * sum of per-fold observed information
+    # solve(vcov_k) = observed info for n/K subjects, so sum / n gives J
+    J_hat      <- Reduce("+", info_list) / n_subj
+    J_inv      <- solve(J_hat)
+    Omega_hat  <- J_inv %*% Sigma_hat %*% J_inv
+    se_sandwich <- sqrt(diag(Omega_hat) / n_subj)
+  } else {
+    d           <- length(beta_HTE)
+    se_naive    <- rep(NA_real_, d)
+    se_sandwich <- rep(NA_real_, d)
+    vcov_naive  <- NULL
+    Omega_hat   <- NULL
+  }
+
   return(list(
-    first_stage_lassos = first_stage_lassos,
+    first_stage_lassos    = first_stage_lassos,
     beta_HTE_first_stages = beta_HTE_first_stages,
-    beta_HTE = beta_HTE,
-    beta_HTEs = beta_HTEs,
-    HTE_est = HTE_est,
-    HTE_ests = HTE_ests,
-    HTE_true = HTE_true,
-    MSE = MSE,
-    time_taken = time_taken
+    beta_HTE    = beta_HTE,
+    beta_HTEs   = beta_HTEs,
+    HTE_est     = HTE_est,
+    HTE_ests    = HTE_ests,
+    HTE_true    = HTE_true,
+    MSE         = MSE,
+    time_taken  = time_taken,
+    se_naive    = se_naive,
+    se_sandwich = se_sandwich,
+    vcov_naive  = vcov_naive,
+    Omega_hat   = Omega_hat
   ))
 }
 

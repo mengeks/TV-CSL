@@ -34,7 +34,8 @@
       "enabled": true,
       "prop_score_specs": [
         "cox-linear-censored-only",
-        "cox-intercept-only"
+        "cox-intercept-only",
+        "cox-risk-set-adjusted"
       ],
       "regressor_specs": ["linear", "complex"],
       "lasso_types": ["S-lasso"],

@@ -1,4 +1,4 @@
-source("R/data-handler.R")
+source("R/old/data-handler.R")
 library(jsonlite)
 library(ggplot2)
 library(dplyr)
@@ -23,8 +23,9 @@ read_single_iteration_result <- function(csv_file) {
 
 get_is_running_flags <- function(methods) {
   list(
-    is_running_cox = !is.null(methods$cox) && methods$cox$enabled,
-    is_running_lasso = !is.null(methods$lasso) && methods$lasso$enabled,
+    is_running_cox    = !is.null(methods$cox)    && methods$cox$enabled,
+    is_running_lasso  = !is.null(methods$lasso)  && methods$lasso$enabled,
+    is_running_s_cox  = !is.null(methods$s_cox)  && methods$s_cox$enabled,
     is_running_TV_CSL = !is.null(methods$TV_CSL) && methods$TV_CSL$enabled
   )
 }
@@ -37,9 +38,10 @@ process_all_iterations <- function(config,eta_type, HTE_type, results_dir, n) {
   R <- config$R
   
   running_flags <- get_is_running_flags(methods)
-  
-  is_running_cox <- running_flags$is_running_cox
-  is_running_lasso <- running_flags$is_running_lasso
+
+  is_running_cox    <- running_flags$is_running_cox
+  is_running_lasso  <- running_flags$is_running_lasso
+  is_running_s_cox  <- running_flags$is_running_s_cox
   is_running_TV_CSL <- running_flags$is_running_TV_CSL
 
   
@@ -50,15 +52,16 @@ process_all_iterations <- function(config,eta_type, HTE_type, results_dir, n) {
     seed_value <- 123 + 11 * i
     
     result_csv_file <- generate_output_path(
-      results_dir = results_dir,
-      is_running_cox = is_running_cox,
-      is_running_lasso = is_running_lasso,
+      results_dir       = results_dir,
+      is_running_cox    = is_running_cox,
+      is_running_lasso  = is_running_lasso,
+      is_running_s_cox  = is_running_s_cox,
       is_running_TV_CSL = is_running_TV_CSL,
-      eta_type = eta_type,
-      HTE_type = HTE_type,
-      n = n,
-      i = i,
-      seed_value = seed_value
+      eta_type          = eta_type,
+      HTE_type          = HTE_type,
+      n                 = n,
+      i                 = i,
+      seed_value        = seed_value
     )
     
     
@@ -80,8 +83,9 @@ process_all_iterations <- function(config,eta_type, HTE_type, results_dir, n) {
   aggregated_metrics <- combined_results %>%
     group_by(Method, Specification) %>%
     summarise(
-      MSE = mean(MSE_Estimate),
-      MCSE_MSE = sqrt(var(MSE_Estimate) / n()),
+      MSE          = mean(MSE_Estimate),
+      MCSE_MSE     = sqrt(var(MSE_Estimate) / n()),
+      Mean_Time_s  = mean(Time_Taken),
       n_iterations = n()
     )
   
@@ -91,12 +95,14 @@ process_all_iterations <- function(config,eta_type, HTE_type, results_dir, n) {
 
 get_method_setting <- function(config){
   methods <- config$methods
-  is_running_cox <- !is.null(methods$cox) && methods$cox$enabled
-  is_running_lasso <- !is.null(methods$lasso) && methods$lasso$enabled
+  is_running_cox    <- !is.null(methods$cox)    && methods$cox$enabled
+  is_running_lasso  <- !is.null(methods$lasso)  && methods$lasso$enabled
+  is_running_s_cox  <- !is.null(methods$s_cox)  && methods$s_cox$enabled
   is_running_TV_CSL <- !is.null(methods$TV_CSL) && methods$TV_CSL$enabled
   method_setting <- paste0(
-    ifelse(is_running_cox, "cox_", ""),
-    ifelse(is_running_lasso, "lasso_", ""),
+    ifelse(is_running_cox,    "cox_",    ""),
+    ifelse(is_running_lasso,  "lasso_",  ""),
+    ifelse(is_running_s_cox,  "s-cox_",  ""),
     ifelse(is_running_TV_CSL, "TV-CSL_", "")
   )
   return(method_setting)
@@ -257,18 +263,20 @@ evaluate_HTE_metrics <- function(
   
   # Get running flags
   running_flags <- get_is_running_flags(methods)
-  is_running_cox <- running_flags$is_running_cox
-  is_running_lasso <- running_flags$is_running_lasso
+  is_running_cox    <- running_flags$is_running_cox
+  is_running_lasso  <- running_flags$is_running_lasso
+  is_running_s_cox  <- running_flags$is_running_s_cox
   is_running_TV_CSL <- running_flags$is_running_TV_CSL
-  
+
   # Initialize aggregated metrics
   aggregated_metrics <- NULL
-  
+
   for (n in n_list) {
     # Generate method settings and output folder
     method_setting <- paste0(
-      ifelse(is_running_cox, "cox_", ""),
-      ifelse(is_running_lasso, "lasso_", ""),
+      ifelse(is_running_cox,    "cox_",    ""),
+      ifelse(is_running_lasso,  "lasso_",  ""),
+      ifelse(is_running_s_cox,  "s-cox_",  ""),
       ifelse(is_running_TV_CSL, "TV-CSL_", "")
     )
     
