@@ -1051,8 +1051,9 @@ TV_CSL_nuisance <- function(fold_train,
   if (prop_score_spec == "cox-intercept-only") {
     # Intercept-only misspecification: no covariates used.
     alpha_estimate <- 0
-  } else if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-risk-set-adjusted-oracle")) {
-    # Risk-set-adjusted propensity: estimated below after fold_test_final is built.
+  } else if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-risk-set-adjusted-oracle",
+                                    "cox-direct-event")) {
+    # Propensity specs estimated after fold_test_final is built.
     alpha_estimate <- NULL
   } else if (grepl("^cox", prop_score_spec)) {
     if (prop_score_spec == "cox-linear-all-data") {
@@ -1162,6 +1163,22 @@ TV_CSL_nuisance <- function(fold_train,
 
     a0_hat <- plogis(logit_pi_R + eta_diff)
     fold_test_final <- fold_test_final %>% mutate(a_t_X = a0_hat)
+
+  } else if (prop_score_spec == "cox-direct-event") {
+    # Direct event-regression estimator.
+    # a_t(x) = P{W(t)=1 | event at t, X=x} — no η₀ or η₁ needed.
+    # Training data: event subjects only (Delta==1 rows of the training pseudo-dataset).
+    # Response: W(U_i) = treatment status at the time of the event = W column on event row.
+    # Time covariate: tstop = U_i for event rows.
+    events  <- fold_train %>% filter(Delta == 1)
+    num_cov <- ncol(fold_train %>% select(starts_with("X.")))
+    cov_str <- paste0("X.", 1:num_cov, collapse = " + ")
+    event_mod <- glm(as.formula(paste("W ~ tstop +", cov_str)),
+                     family = binomial, data = events)
+    # Evaluate â_t(X_j) for each pseudo-row (t = tstop, X = X_j) in the test fold.
+    a_hat <- plogis(predict(event_mod, newdata = fold_test_final, type = "link"))
+    fold_test_final <- fold_test_final %>% mutate(a_t_X = a_hat)
+
   } else {
     print(paste("alpha_estimate: ", alpha_estimate))
     if (prop_score_spec == "cox-intercept-only") {

@@ -35,7 +35,8 @@
       "prop_score_specs": [
         "cox-linear-censored-only",
         "cox-intercept-only",
-        "cox-risk-set-adjusted"
+        "cox-risk-set-adjusted",
+        "cox-direct-event"
       ],
       "regressor_specs": ["linear", "complex"],
       "lasso_types": ["S-lasso"],
