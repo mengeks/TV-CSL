@@ -1051,7 +1051,7 @@ TV_CSL_nuisance <- function(fold_train,
   if (prop_score_spec == "cox-intercept-only") {
     # Intercept-only misspecification: no covariates used.
     alpha_estimate <- 0
-  } else if (prop_score_spec == "cox-risk-set-adjusted") {
+  } else if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-risk-set-adjusted-oracle")) {
     # Risk-set-adjusted propensity: estimated below after fold_test_final is built.
     alpha_estimate <- NULL
   } else if (grepl("^cox", prop_score_spec)) {
@@ -1142,19 +1142,25 @@ TV_CSL_nuisance <- function(fold_train,
     mutate(Delta = if_else(tstop < max(tstop), 0, Delta)) %>%
     ungroup()
 
-  if (prop_score_spec == "cox-risk-set-adjusted") {
-    # Risk-set-adjusted propensity score (Neyman-orthogonal version).
-    # eta_0 and eta_1 on fold_test_final come from the S-lasso/T-lasso first stage.
-    # π_R(t,x) = P(W(t)=1 | at-risk, X) estimated by logistic on the nuisance fold
-    # (all rows of fold_train are at-risk by pseudo-dataset construction).
-    # a_0(t,x) = expit(logit(π_R(t,x)) + eta_1(x) - eta_0(x))
-    num_cov  <- ncol(fold_train %>% select(starts_with("X.")))
-    cov_str  <- paste0("X.", 1:num_cov, collapse = " + ")
-    pi_R_mod <- glm(as.formula(paste("W ~ tstart +", cov_str)),
-                    family = binomial, data = fold_train)
+  if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-risk-set-adjusted-oracle")) {
+    # Risk-set-adjusted propensity: a_0(t,x) = expit(logit(π_R(t,x)) + η₁(x) - η₀(x))
+    # π_R estimated by logistic regression on the training pseudo-rows (all at-risk by construction).
+    num_cov    <- ncol(fold_train %>% select(starts_with("X.")))
+    cov_str    <- paste0("X.", 1:num_cov, collapse = " + ")
+    pi_R_mod   <- glm(as.formula(paste("W ~ tstart +", cov_str)),
+                      family = binomial, data = fold_train)
     logit_pi_R <- predict(pi_R_mod, newdata = fold_test_final, type = "link")
-    eta_diff   <- fold_test_final$eta_1 - fold_test_final$eta_0
-    a0_hat     <- plogis(logit_pi_R + eta_diff)
+
+    if (prop_score_spec == "cox-risk-set-adjusted-oracle") {
+      # Oracle: use the true per-subject CATE τ₀(x) = HTE from the DGP.
+      # Diagnoses whether formula failure is due to nuisance estimation quality.
+      eta_diff <- fold_test_final$HTE
+    } else {
+      # Plug-in: use estimated τ̂(x) = η̂₁(x) - η̂₀(x) from first-stage lasso.
+      eta_diff <- fold_test_final$eta_1 - fold_test_final$eta_0
+    }
+
+    a0_hat <- plogis(logit_pi_R + eta_diff)
     fold_test_final <- fold_test_final %>% mutate(a_t_X = a0_hat)
   } else {
     print(paste("alpha_estimate: ", alpha_estimate))
