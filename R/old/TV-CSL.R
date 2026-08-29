@@ -1096,14 +1096,20 @@ TV_CSL_nuisance <- function(fold_train,
     return(new_intervals)
   }
   
+  # Save the true eta_0 from DGP before the lasso step overwrites it.
+  # The oracle needs the population eta_0(x), not the first-stage estimate.
+  if ("eta_0" %in% names(fold_test)) {
+    fold_test$true_eta_0 <- fold_test$eta_0
+  }
+
   granular_cut_points <- unique(fold_test$tstop)
   fold_test_split <- map_dfr(seq_len(nrow(fold_test)), function(i) {
     split_within_intervals(fold_test[i, ], granular_cut_points)
   })
-  
-  
-  
-  # 3. Obtain nu 
+
+
+
+  # 3. Obtain nu
   if (lasso_type == "T-lasso") {
     lasso_ret <- T_lasso(
       train_data = fold_train,  
@@ -1158,16 +1164,17 @@ TV_CSL_nuisance <- function(fold_train,
 
   } else if (prop_score_spec == "cox-time-varying-oracle") {
     # True analytical oracle for a_t(x) = P{W(t)=1 | event at t, X=x}.
-    # DGP: A | X ~ Exp(exp(X.2+X.3)), h0(t) = t, tau(x) = X.1+X.2+X.3.
-    # Derived formula (see paper Section 3):
-    #   logit a_t(x) = tau + x2 + x3 + r*t - d*t^2 + log I(t,x)
-    # where r(x) = exp(x2+x3), d(x) = 0.5*exp(eta_0)*(exp(tau)-1),
+    # DGP: A|X ~ Exp(r(x)) with r(x)=exp(x2+x3), h0(t)=t, tau(x)=x1+x2+x3.
+    # Formula (same for linear and non-linear eta_0; only eta_0(x) value differs):
+    #   logit a_t(x) = x1+2*x2+2*x3 + r*t - d*t^2 + log I(t,x)
+    # where r = exp(x2+x3), d(x) = 0.5*exp(eta_0(x))*(exp(tau(x))-1),
     #       I(t,x) = integral_0^t exp(d*s^2 - r*s) ds.
-    # Numerically stabilised: subtract M = max(0, d*t^2 - r*t) inside the exponent.
-    compute_true_a_t <- function(t, x2, x3, eta0, tau) {
+    # Uses true_eta_0 (DGP value) rather than the first-stage lasso estimate.
+    # Numerical stabilisation: subtract M = max(0, d*t^2 - r*t) inside the exponent.
+    compute_true_a_t <- function(t, x1, x2, x3, eta0_true, tau) {
       if (is.na(t) || t <= 0) return(0.5)
       r <- exp(x2 + x3)
-      d <- 0.5 * exp(eta0) * (exp(tau) - 1)
+      d <- 0.5 * exp(eta0_true) * (exp(tau) - 1)
       M <- max(0, d * t^2 - r * t)
       stable_int <- tryCatch(
         integrate(function(s) exp(d * s^2 - r * s - M),
@@ -1175,14 +1182,15 @@ TV_CSL_nuisance <- function(fold_train,
         error = function(e) NA_real_
       )
       if (is.na(stable_int) || stable_int <= 0) return(0.5)
-      plogis(tau + x2 + x3 + r * t - d * t^2 + M + log(stable_int))
+      plogis(x1 + 2*x2 + 2*x3 + r * t - d * t^2 + M + log(stable_int))
     }
     a0_hat <- mapply(compute_true_a_t,
-                     t    = fold_test_final$tstop,
-                     x2   = fold_test_final$X.2,
-                     x3   = fold_test_final$X.3,
-                     eta0 = fold_test_final$eta_0,
-                     tau  = fold_test_final$HTE)
+                     t         = fold_test_final$tstop,
+                     x1        = fold_test_final$X.1,
+                     x2        = fold_test_final$X.2,
+                     x3        = fold_test_final$X.3,
+                     eta0_true = fold_test_final$true_eta_0,
+                     tau       = fold_test_final$HTE)
     fold_test_final <- fold_test_final %>% mutate(a_t_X = as.vector(a0_hat))
 
   } else if (prop_score_spec == "cox-time-varying-prop") {
