@@ -1170,13 +1170,26 @@ TV_CSL_nuisance <- function(fold_train,
     # Training data: event subjects only (Delta==1 rows of the training pseudo-dataset).
     # Response: W(U_i) = treatment status at the time of the event = W column on event row.
     # Time covariate: tstop = U_i for event rows.
+    # Model: additive GAM with smooth for time plus linear covariate terms.
+    # Time-covariate interactions exist in the truth but are a refinement; an additive
+    # GAM already improves on logistic regression by allowing a flexible time trend.
+    library(mgcv)
     events  <- fold_train %>% filter(Delta == 1)
     num_cov <- ncol(fold_train %>% select(starts_with("X.")))
     cov_str <- paste0("X.", 1:num_cov, collapse = " + ")
-    event_mod <- glm(as.formula(paste("W ~ tstop +", cov_str)),
-                     family = binomial, data = events)
+    event_mod <- tryCatch(
+      gam(as.formula(paste("W ~ s(tstop, k=5) +", cov_str)),
+          family = binomial, data = events),
+      error = function(e) {
+        # Fallback to logistic regression if GAM fails (too few unique event times).
+        glm(as.formula(paste("W ~ tstop +", cov_str)),
+            family = binomial, data = events)
+      }
+    )
     # Evaluate â_t(X_j) for each pseudo-row (t = tstop, X = X_j) in the test fold.
-    a_hat <- plogis(predict(event_mod, newdata = fold_test_final, type = "link"))
+    # as.vector() strips the dim attribute that predict.gam adds to its output;
+    # without it, a_t_X becomes a 1D array and subsequent matrix arithmetic fails.
+    a_hat <- as.vector(plogis(predict(event_mod, newdata = fold_test_final, type = "link")))
     fold_test_final <- fold_test_final %>% mutate(a_t_X = a_hat)
 
   } else {

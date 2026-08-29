@@ -39,6 +39,12 @@ run_experiment_iteration <-
   K       <- ifelse(is.null(config$K), 5, config$K)
   datagen_params <- config$datagen
 
+  # Allow the params file to override the global results directory.
+  if (!is.null(config$results_dir)) {
+    RESULTS_DIR <<- paste0(config$results_dir, "/")
+    dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
+  }
+
   input_setting <- paste0(eta_type, "_", HTE_type)
   seed_value    <- 123 + 11 * i
   set.seed(seed_value)
@@ -175,9 +181,10 @@ run_experiment_iteration <-
   if (is_running_TV_CSL) {
     start_time <- Sys.time()
 
+    temp_dir <- paste0(RESULTS_DIR, "temp/")
+    dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
     temp_result_csv_file <- paste0(
-      "scripts/TV-CSL/results/temp/",
-      input_setting, "-n_", n,
+      temp_dir, input_setting, "-n_", n,
       "-iteration_", i, "-seed_", seed_value, ".csv"
     )
 

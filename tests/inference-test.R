@@ -121,4 +121,54 @@ covered_sand  <- true_beta >= ci_lo_sand  & true_beta <= ci_hi_sand
 cat("Naive CI covers true_beta:", covered_naive, "(diagnostic only -- single sample)\n")
 cat("Sandwich CI covers true_beta:", covered_sand, "(diagnostic only -- single sample)\n")
 
+cat("\n========== TV-CSL inference: cox-direct-event ==========\n")
+tvcsl_de <- TV_CSL(
+  train_data          = train_data_pseudo,
+  test_data           = test_data,
+  train_data_original = single_data_orig,
+  HTE_type            = HTE_type,
+  eta_type            = eta_type,
+  K                   = K,
+  prop_score_spec     = "cox-direct-event",
+  lasso_type          = "S-lasso",
+  regressor_spec      = "linear",
+  final_model_method  = "lasso_coxph",
+  HTE_spec            = "linear",
+  i                   = i
+)
+
+cat("beta_HTE:   ", round(tvcsl_de$beta_HTE, 4), "\n")
+cat("se_naive:   ", round(tvcsl_de$se_naive, 4), "\n")
+cat("se_sandwich:", round(tvcsl_de$se_sandwich, 4), "\n")
+
+stopifnot("cox-direct-event: se_naive not finite"      = all(is.finite(tvcsl_de$se_naive)))
+stopifnot("cox-direct-event: se_naive not positive"    = all(tvcsl_de$se_naive > 0))
+stopifnot("cox-direct-event: se_sandwich not finite"   = all(is.finite(tvcsl_de$se_sandwich)))
+stopifnot("cox-direct-event: se_sandwich not positive" = all(tvcsl_de$se_sandwich > 0))
+
+cat("\n========== TV-CSL inference: cox-risk-set-adjusted-oracle ==========\n")
+tvcsl_oracle <- TV_CSL(
+  train_data          = train_data_pseudo,
+  test_data           = test_data,
+  train_data_original = single_data_orig,
+  HTE_type            = HTE_type,
+  eta_type            = eta_type,
+  K                   = K,
+  prop_score_spec     = "cox-risk-set-adjusted-oracle",
+  lasso_type          = "S-lasso",
+  regressor_spec      = "linear",
+  final_model_method  = "lasso_coxph",
+  HTE_spec            = "linear",
+  i                   = i
+)
+
+cat("beta_HTE:   ", round(tvcsl_oracle$beta_HTE, 4), "\n")
+cat("se_naive:   ", round(tvcsl_oracle$se_naive, 4), "\n")
+cat("se_sandwich:", round(tvcsl_oracle$se_sandwich, 4), "\n")
+
+stopifnot("oracle: se_naive not finite"      = all(is.finite(tvcsl_oracle$se_naive)))
+stopifnot("oracle: se_naive not positive"    = all(tvcsl_oracle$se_naive > 0))
+stopifnot("oracle: se_sandwich not finite"   = all(is.finite(tvcsl_oracle$se_sandwich)))
+stopifnot("oracle: se_sandwich not positive" = all(tvcsl_oracle$se_sandwich > 0))
+
 cat("\n========== All assertions passed ==========\n")
