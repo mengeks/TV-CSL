@@ -2,11 +2,12 @@ suppressPackageStartupMessages({
   library(vroom); library(dplyr); library(stringr)
 })
 
-# Multiple results directories supported; list all that exist
+# Edit this vector to select which results directories to include.
+# Comment out any dirs you want to exclude; non-existent dirs are silently skipped.
 results_dirs <- c(
-  "scripts/TV-CSL/results",
-  "scripts/TV-CSL/results_new_props",
-  "scripts/TV-CSL/results_time_varying_prop"
+  "scripts/TV-CSL/results",               # main 4 methods (marg-prop, intercept-only, etc.)
+  "scripts/TV-CSL/results_new_props",     # old name for time-varying-prop/oracle runs
+  "scripts/TV-CSL/results_time_varying_prop"  # new name (after cluster re-run)
 )
 results_dirs <- results_dirs[dir.exists(results_dirs)]
 cat("Reading from dirs:\n"); cat(" ", results_dirs, sep = "\n  "); cat("\n")
