@@ -21,8 +21,7 @@
     "TV_CSL": {
       "enabled": true,
       "prop_score_specs": [
-        "cox-time-varying-prop",
-        "cox-time-varying-oracle"
+        "cox-time-varying-prop"
       ],
       "regressor_specs": ["linear", "complex"],
       "lasso_types": ["S-lasso"],

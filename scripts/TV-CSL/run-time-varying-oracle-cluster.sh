@@ -1,19 +1,19 @@
 #!/bin/bash
-#SBATCH -J TV_CSL_sim
-#SBATCH -o scripts/TV-CSL/logs/TV_CSL_%A_%a.out
-#SBATCH -e scripts/TV-CSL/logs/TV_CSL_%A_%a.err
+#SBATCH -J TV_CSL_time_varying_oracle
+#SBATCH -o scripts/TV-CSL/logs/time_varying_oracle_%A_%a.out
+#SBATCH -e scripts/TV-CSL/logs/time_varying_oracle_%A_%a.err
 #SBATCH -c 1
 #SBATCH --mem=16G
 #SBATCH -t 24:00:00
 #SBATCH --array=1-1000
 
 project_dir="/homes2/xmeng/TV-CSL"
-json_file="${project_dir}/scripts/TV-CSL/params-cluster.json"
+json_file="${project_dir}/scripts/TV-CSL/params-time-varying-oracle.json"
 
 module load R/4.3.2
 
 mkdir -p "${project_dir}/scripts/TV-CSL/logs"
-mkdir -p "${project_dir}/scripts/TV-CSL/results/temp"
+mkdir -p "${project_dir}/scripts/TV-CSL/results_time_varying_oracle/temp"
 
 echo "Config:    ${json_file}"
 echo "Iteration: ${SLURM_ARRAY_TASK_ID}"
