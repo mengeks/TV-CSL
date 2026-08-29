@@ -1051,8 +1051,8 @@ TV_CSL_nuisance <- function(fold_train,
   if (prop_score_spec == "cox-intercept-only") {
     # Intercept-only misspecification: no covariates used.
     alpha_estimate <- 0
-  } else if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-risk-set-adjusted-oracle",
-                                    "cox-direct-event")) {
+  } else if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-time-varying-oracle",
+                                    "cox-time-varying-prop")) {
     # Propensity specs estimated after fold_test_final is built.
     alpha_estimate <- NULL
   } else if (grepl("^cox", prop_score_spec)) {
@@ -1143,7 +1143,7 @@ TV_CSL_nuisance <- function(fold_train,
     mutate(Delta = if_else(tstop < max(tstop), 0, Delta)) %>%
     ungroup()
 
-  if (prop_score_spec %in% c("cox-risk-set-adjusted", "cox-risk-set-adjusted-oracle")) {
+  if (prop_score_spec == "cox-risk-set-adjusted") {
     # Risk-set-adjusted propensity: a_0(t,x) = expit(logit(π_R(t,x)) + η₁(x) - η₀(x))
     # π_R estimated by logistic regression on the training pseudo-rows (all at-risk by construction).
     num_cov    <- ncol(fold_train %>% select(starts_with("X.")))
@@ -1151,20 +1151,41 @@ TV_CSL_nuisance <- function(fold_train,
     pi_R_mod   <- glm(as.formula(paste("W ~ tstart +", cov_str)),
                       family = binomial, data = fold_train)
     logit_pi_R <- predict(pi_R_mod, newdata = fold_test_final, type = "link")
-
-    if (prop_score_spec == "cox-risk-set-adjusted-oracle") {
-      # Oracle: use the true per-subject CATE τ₀(x) = HTE from the DGP.
-      # Diagnoses whether formula failure is due to nuisance estimation quality.
-      eta_diff <- fold_test_final$HTE
-    } else {
-      # Plug-in: use estimated τ̂(x) = η̂₁(x) - η̂₀(x) from first-stage lasso.
-      eta_diff <- fold_test_final$eta_1 - fold_test_final$eta_0
-    }
-
-    a0_hat <- plogis(logit_pi_R + eta_diff)
+    # Plug-in: use estimated τ̂(x) = η̂₁(x) - η̂₀(x) from first-stage lasso.
+    eta_diff   <- fold_test_final$eta_1 - fold_test_final$eta_0
+    a0_hat     <- plogis(logit_pi_R + eta_diff)
     fold_test_final <- fold_test_final %>% mutate(a_t_X = a0_hat)
 
-  } else if (prop_score_spec == "cox-direct-event") {
+  } else if (prop_score_spec == "cox-time-varying-oracle") {
+    # True analytical oracle for a_t(x) = P{W(t)=1 | event at t, X=x}.
+    # DGP: A | X ~ Exp(exp(X.2+X.3)), h0(t) = t, tau(x) = X.1+X.2+X.3.
+    # Derived formula (see paper Section 3):
+    #   logit a_t(x) = tau + x2 + x3 + r*t - d*t^2 + log I(t,x)
+    # where r(x) = exp(x2+x3), d(x) = 0.5*exp(eta_0)*(exp(tau)-1),
+    #       I(t,x) = integral_0^t exp(d*s^2 - r*s) ds.
+    # Numerically stabilised: subtract M = max(0, d*t^2 - r*t) inside the exponent.
+    compute_true_a_t <- function(t, x2, x3, eta0, tau) {
+      if (is.na(t) || t <= 0) return(0.5)
+      r <- exp(x2 + x3)
+      d <- 0.5 * exp(eta0) * (exp(tau) - 1)
+      M <- max(0, d * t^2 - r * t)
+      stable_int <- tryCatch(
+        integrate(function(s) exp(d * s^2 - r * s - M),
+                  lower = 0, upper = t, rel.tol = 1e-5)$value,
+        error = function(e) NA_real_
+      )
+      if (is.na(stable_int) || stable_int <= 0) return(0.5)
+      plogis(tau + x2 + x3 + r * t - d * t^2 + M + log(stable_int))
+    }
+    a0_hat <- mapply(compute_true_a_t,
+                     t    = fold_test_final$tstop,
+                     x2   = fold_test_final$X.2,
+                     x3   = fold_test_final$X.3,
+                     eta0 = fold_test_final$eta_0,
+                     tau  = fold_test_final$HTE)
+    fold_test_final <- fold_test_final %>% mutate(a_t_X = as.vector(a0_hat))
+
+  } else if (prop_score_spec == "cox-time-varying-prop") {
     # Direct event-regression estimator.
     # a_t(x) = P{W(t)=1 | event at t, X=x} — no η₀ or η₁ needed.
     # Training data: event subjects only (Delta==1 rows of the training pseudo-dataset).

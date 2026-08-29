@@ -121,7 +121,7 @@ covered_sand  <- true_beta >= ci_lo_sand  & true_beta <= ci_hi_sand
 cat("Naive CI covers true_beta:", covered_naive, "(diagnostic only -- single sample)\n")
 cat("Sandwich CI covers true_beta:", covered_sand, "(diagnostic only -- single sample)\n")
 
-cat("\n========== TV-CSL inference: cox-direct-event ==========\n")
+cat("\n========== TV-CSL inference: cox-time-varying-prop ==========\n")
 tvcsl_de <- TV_CSL(
   train_data          = train_data_pseudo,
   test_data           = test_data,
@@ -129,7 +129,7 @@ tvcsl_de <- TV_CSL(
   HTE_type            = HTE_type,
   eta_type            = eta_type,
   K                   = K,
-  prop_score_spec     = "cox-direct-event",
+  prop_score_spec     = "cox-time-varying-prop",
   lasso_type          = "S-lasso",
   regressor_spec      = "linear",
   final_model_method  = "lasso_coxph",
@@ -141,12 +141,12 @@ cat("beta_HTE:   ", round(tvcsl_de$beta_HTE, 4), "\n")
 cat("se_naive:   ", round(tvcsl_de$se_naive, 4), "\n")
 cat("se_sandwich:", round(tvcsl_de$se_sandwich, 4), "\n")
 
-stopifnot("cox-direct-event: se_naive not finite"      = all(is.finite(tvcsl_de$se_naive)))
-stopifnot("cox-direct-event: se_naive not positive"    = all(tvcsl_de$se_naive > 0))
-stopifnot("cox-direct-event: se_sandwich not finite"   = all(is.finite(tvcsl_de$se_sandwich)))
-stopifnot("cox-direct-event: se_sandwich not positive" = all(tvcsl_de$se_sandwich > 0))
+stopifnot("cox-time-varying-prop: se_naive not finite"      = all(is.finite(tvcsl_de$se_naive)))
+stopifnot("cox-time-varying-prop: se_naive not positive"    = all(tvcsl_de$se_naive > 0))
+stopifnot("cox-time-varying-prop: se_sandwich not finite"   = all(is.finite(tvcsl_de$se_sandwich)))
+stopifnot("cox-time-varying-prop: se_sandwich not positive" = all(tvcsl_de$se_sandwich > 0))
 
-cat("\n========== TV-CSL inference: cox-risk-set-adjusted-oracle ==========\n")
+cat("\n========== TV-CSL inference: cox-time-varying-oracle ==========\n")
 tvcsl_oracle <- TV_CSL(
   train_data          = train_data_pseudo,
   test_data           = test_data,
@@ -154,7 +154,7 @@ tvcsl_oracle <- TV_CSL(
   HTE_type            = HTE_type,
   eta_type            = eta_type,
   K                   = K,
-  prop_score_spec     = "cox-risk-set-adjusted-oracle",
+  prop_score_spec     = "cox-time-varying-oracle",
   lasso_type          = "S-lasso",
   regressor_spec      = "linear",
   final_model_method  = "lasso_coxph",

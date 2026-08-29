@@ -2,10 +2,25 @@ suppressPackageStartupMessages({
   library(vroom); library(dplyr); library(stringr)
 })
 
-results_dir <- "scripts/TV-CSL/results"
+# Multiple results directories supported; list all that exist
+results_dirs <- c(
+  "scripts/TV-CSL/results",
+  "scripts/TV-CSL/results_new_props",
+  "scripts/TV-CSL/results_time_varying_prop"
+)
+results_dirs <- results_dirs[dir.exists(results_dirs)]
+cat("Reading from dirs:\n"); cat(" ", results_dirs, sep = "\n  "); cat("\n")
+
+# Normalize old spec names → current names
+normalize_spec <- function(x) {
+  x <- str_replace_all(x, "cox-direct-event",             "cox-time-varying-prop")
+  x <- str_replace_all(x, "cox-risk-set-adjusted-oracle", "cox-time-varying-oracle")
+  x
+}
 
 # ---- Result CSVs (batched loading) ----
-f_res <- list.files(results_dir, pattern = "result-iteration", recursive = TRUE, full.names = TRUE)
+f_res <- unlist(lapply(results_dirs, function(d)
+  list.files(d, pattern = "result-iteration", recursive = TRUE, full.names = TRUE)))
 f_res <- f_res[!grepl("_inference", f_res)]
 cat("Result files:", length(f_res), "\n")
 
@@ -13,6 +28,7 @@ batch_size <- 200
 batches <- split(f_res, ceiling(seq_along(f_res) / batch_size))
 res_list <- lapply(batches, function(b) {
   d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
+  d$Specification <- normalize_spec(d$Specification)
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
   d$n        <- as.integer(str_extract(d$path, "_n-(\\d+)/") |> str_remove_all("_n-|/"))
   d
@@ -51,12 +67,14 @@ for (et in c("linear", "non-linear")) {
 }
 
 # ---- Inference CSVs ----
-f_inf <- list.files(results_dir, pattern = "_inference\\.csv$", recursive = TRUE, full.names = TRUE)
+f_inf <- unlist(lapply(results_dirs, function(d)
+  list.files(d, pattern = "_inference\\.csv$", recursive = TRUE, full.names = TRUE)))
 cat("\n\nInference files:", length(f_inf), "\n")
 
 batches_inf <- split(f_inf, ceiling(seq_along(f_inf) / batch_size))
 inf_list <- lapply(batches_inf, function(b) {
   d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
+  d$Specification <- normalize_spec(d$Specification)
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
   d$n        <- as.integer(str_extract(d$path, "_n-(\\d+)/") |> str_remove_all("_n-|/"))
   d

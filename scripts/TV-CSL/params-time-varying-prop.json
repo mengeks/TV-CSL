@@ -1,7 +1,7 @@
 {
   "R": 1000,
   "K": 5,
-  "results_dir": "scripts/TV-CSL/results_new_props",
+  "results_dir": "scripts/TV-CSL/results_time_varying_prop",
   "datagen": {
     "is_time_varying": true,
     "light_censoring": false,
@@ -21,8 +21,8 @@
     "TV_CSL": {
       "enabled": true,
       "prop_score_specs": [
-        "cox-direct-event",
-        "cox-risk-set-adjusted-oracle"
+        "cox-time-varying-prop",
+        "cox-time-varying-oracle"
       ],
       "regressor_specs": ["linear", "complex"],
       "lasso_types": ["S-lasso"],
