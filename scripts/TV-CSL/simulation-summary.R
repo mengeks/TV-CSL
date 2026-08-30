@@ -19,6 +19,14 @@ normalize_spec <- function(x) {
   x
 }
 
+# results_time_varying_prop contains OLD oracle runs (bad: used estimated eta_0).
+# Exclude oracle specs from that directory so new oracle data (results_time_varying_oracle)
+# is not mixed with old oracle data.
+old_oracle_dir <- "results_time_varying_prop"
+is_old_oracle  <- function(path, spec) {
+  grepl(old_oracle_dir, path, fixed = TRUE) & grepl("time-varying-oracle", spec)
+}
+
 # ---- Result CSVs (batched loading) ----
 f_res <- unlist(lapply(results_dirs, function(d)
   list.files(d, pattern = "result-iteration", recursive = TRUE, full.names = TRUE)))
@@ -30,6 +38,7 @@ batches <- split(f_res, ceiling(seq_along(f_res) / batch_size))
 res_list <- lapply(batches, function(b) {
   d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
   d$Specification <- normalize_spec(d$Specification)
+  d <- d[!is_old_oracle(d$path, d$Specification), ]
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
   d$n        <- as.integer(str_extract(d$path, "_n-(\\d+)/") |> str_remove_all("_n-|/"))
   d
@@ -76,6 +85,7 @@ batches_inf <- split(f_inf, ceiling(seq_along(f_inf) / batch_size))
 inf_list <- lapply(batches_inf, function(b) {
   d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
   d$Specification <- normalize_spec(d$Specification)
+  d <- d[!is_old_oracle(d$path, d$Specification), ]
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
   d$n        <- as.integer(str_extract(d$path, "_n-(\\d+)/") |> str_remove_all("_n-|/"))
   d
