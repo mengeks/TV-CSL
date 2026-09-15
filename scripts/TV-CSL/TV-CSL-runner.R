@@ -196,7 +196,10 @@ run_experiment_iteration <-
       K                    = K,
       HTE_type             = HTE_type,
       eta_type             = eta_type,
-      temp_result_csv_file = temp_result_csv_file
+      temp_result_csv_file = temp_result_csv_file,
+      outcome_vars         = methods$TV_CSL$outcome_vars,
+      treatment_vars       = methods$TV_CSL$treatment_vars,
+      effect_modifiers     = methods$TV_CSL$effect_modifiers
     )
     end_time <- Sys.time()
 

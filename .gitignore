@@ -18,6 +18,7 @@ data/
 tables
 results
 results_*/
+results-archive-*/
 tables-and-plots
 
 ## Ignore simulation logs and intermediate files

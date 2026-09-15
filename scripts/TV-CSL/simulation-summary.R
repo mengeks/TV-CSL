@@ -2,34 +2,19 @@ suppressPackageStartupMessages({
   library(vroom); library(dplyr); library(stringr)
 })
 
-# Edit this vector to select which results directories to include.
-# Comment out any dirs you want to exclude; non-existent dirs are silently skipped.
-results_dirs <- c(
-  "scripts/TV-CSL/results",                    # main methods (S-Cox, S-Lasso, marg-prop, intercept-only, ...)
-  "scripts/TV-CSL/results_time_varying_prop",  # cox-time-varying-prop runs (~990-997 reps)
-  "scripts/TV-CSL/results_time_varying_oracle" # cox-time-varying-oracle runs (new analytical oracle)
-)
-results_dirs <- results_dirs[dir.exists(results_dirs)]
-cat("Reading from dirs:\n"); cat(" ", results_dirs, sep = "\n  "); cat("\n")
+results_dir <- "scripts/TV-CSL/results"
+if (!dir.exists(results_dir)) stop("Results directory not found: ", results_dir)
+cat("Reading from: ", results_dir, "\n")
 
-# Normalize old spec names → current names
+# Normalize any lingering old spec names → current names
 normalize_spec <- function(x) {
   x <- str_replace_all(x, "cox-direct-event",             "cox-time-varying-prop")
   x <- str_replace_all(x, "cox-risk-set-adjusted-oracle", "cox-time-varying-oracle")
   x
 }
 
-# results_time_varying_prop contains OLD oracle runs (bad: used estimated eta_0).
-# Exclude oracle specs from that directory so new oracle data (results_time_varying_oracle)
-# is not mixed with old oracle data.
-old_oracle_dir <- "results_time_varying_prop"
-is_old_oracle  <- function(path, spec) {
-  grepl(old_oracle_dir, path, fixed = TRUE) & grepl("time-varying-oracle", spec)
-}
-
 # ---- Result CSVs (batched loading) ----
-f_res <- unlist(lapply(results_dirs, function(d)
-  list.files(d, pattern = "result-iteration", recursive = TRUE, full.names = TRUE)))
+f_res <- list.files(results_dir, pattern = "result-iteration", recursive = TRUE, full.names = TRUE)
 f_res <- f_res[!grepl("_inference", f_res)]
 cat("Result files:", length(f_res), "\n")
 
@@ -38,7 +23,6 @@ batches <- split(f_res, ceiling(seq_along(f_res) / batch_size))
 res_list <- lapply(batches, function(b) {
   d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
   d$Specification <- normalize_spec(d$Specification)
-  d <- d[!is_old_oracle(d$path, d$Specification), ]
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
   d$n        <- as.integer(str_extract(d$path, "_n-(\\d+)/") |> str_remove_all("_n-|/"))
   d
@@ -77,15 +61,13 @@ for (et in c("linear", "non-linear")) {
 }
 
 # ---- Inference CSVs ----
-f_inf <- unlist(lapply(results_dirs, function(d)
-  list.files(d, pattern = "_inference\\.csv$", recursive = TRUE, full.names = TRUE)))
+f_inf <- list.files(results_dir, pattern = "_inference\\.csv$", recursive = TRUE, full.names = TRUE)
 cat("\n\nInference files:", length(f_inf), "\n")
 
 batches_inf <- split(f_inf, ceiling(seq_along(f_inf) / batch_size))
 inf_list <- lapply(batches_inf, function(b) {
   d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
   d$Specification <- normalize_spec(d$Specification)
-  d <- d[!is_old_oracle(d$path, d$Specification), ]
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
   d$n        <- as.integer(str_extract(d$path, "_n-(\\d+)/") |> str_remove_all("_n-|/"))
   d

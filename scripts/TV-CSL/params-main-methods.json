@@ -37,8 +37,7 @@
         "cox-linear-censored-only",
         "cox-intercept-only",
         "cox-risk-set-adjusted",
-        "cox-time-varying-prop",
-        "cox-time-varying-oracle"
+        "cox-time-varying-prop"
       ],
       "regressor_specs": ["linear", "complex"],
       "lasso_types": ["S-lasso"],
