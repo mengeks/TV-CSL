@@ -3,8 +3,8 @@ library(glmnet)
 library(tidyverse)
 library(here)
 
-source(here::here("R/old/cox-loglik.R"))
-source(here::here("R/old/data-handler.R"))
+source(here::here("R/cox-loglik.R"))
+source(here::here("R/data-handler.R"))
 
 # ---------------------------------------------------------------------------
 # Data preprocessing helpers
@@ -106,4 +106,4 @@ create_cox_formula <- function(model_spec,
 # ---------------------------------------------------------------------------
 # Main TV-CSL estimation code (TV_CSL, S_cox, T_lasso, S_lasso, run_* fns)
 # ---------------------------------------------------------------------------
-source(here::here("R/old/TV-CSL.R"))
+source(here::here("R/TV-CSL.R"))

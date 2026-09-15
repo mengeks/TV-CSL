@@ -75,7 +75,7 @@ scripts/TV-CSL/
   generate-plot-data.R        # Programmatic data extraction for figures
   plot-results.R              # Produces writeups/figures/*.pdf
   TV-CSL-runner.R             # Orchestration: reads JSON, runs methods, saves CSV
-  time-varying-estimate.R     # Bridges TV-CSL-runner.R → R/old/TV-CSL.R
+  time-varying-estimate.R     # Bridges TV-CSL-runner.R → R/TV-CSL.R
   results/                    # All simulation results (single source of truth)
   results-archive-2026-08/    # Archived: original main-methods results
   results-archive-tvprop-2026-08/   # Archived: time-varying-prop runs + bad oracle

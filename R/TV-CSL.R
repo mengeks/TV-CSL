@@ -1,7 +1,7 @@
 library(survival)
 library(glmnet)
 library(tidyverse)
-source(here::here("R/old/cox-loglik.R"))
+source(here::here("R/cox-loglik.R"))
 
 # Helper: select covariate columns from a data frame.
 # When vars is NULL, falls back to all columns starting with "X.".
