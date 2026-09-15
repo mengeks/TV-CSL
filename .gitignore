@@ -19,6 +19,7 @@ tables
 results
 results_*/
 results-archive-*/
+results-integration-test/
 tables-and-plots
 
 ## Ignore simulation logs and intermediate files
