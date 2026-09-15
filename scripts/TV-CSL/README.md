@@ -6,14 +6,9 @@
 bash scripts/TV-CSL/run-all.sh
 ```
 
-This submits two SLURM array jobs (iterations 1–1000):
-
-| Job name | Params file | Methods |
-|---|---|---|
-| `TV_CSL_main` | `params-main-methods.json` | S-Cox, S-Lasso, TV-CSL × {marg-prop, intercept-only, risk-set-adj., time-var-prop} |
-| `TV_CSL_oracle` | `params-oracle-only.json` | TV-CSL × {time-var-oracle} (slower: numerical integration) |
-
-Both jobs write to `scripts/TV-CSL/results/`. Data is auto-generated under `data/` if missing.
+This submits a single SLURM array job (iterations 1–1000) covering all methods:
+S-Cox, S-Lasso, TV-CSL × {marg-prop, intercept-only, risk-set-adj., time-var-prop, oracle}.
+Writes to `scripts/TV-CSL/results/`. Data is auto-generated under `data/` if missing.
 
 To submit a single custom run:
 ```bash
@@ -67,9 +62,9 @@ Rscript tests/test-tvcsl.R
 ```
 scripts/TV-CSL/
   run-cluster.sh              # Generic SLURM runner (takes params.json as $1)
-  run-all.sh                  # Submits both SLURM jobs to replicate everything
-  params-main-methods.json    # Config: S-Cox, S-Lasso, TV-CSL × 4 prop specs
-  params-oracle-only.json     # Config: TV-CSL × oracle only (writes to same results/)
+  run-all.sh                  # Submits single SLURM job for all methods
+  params-main-methods.json    # Config: all methods (S-Cox, S-Lasso, TV-CSL × 5 prop specs incl. oracle)
+  params-oracle-only.json     # Config: TV-CSL × oracle only (for standalone oracle re-runs)
   simulation-summary.R        # Aggregates results/, prints MSE + coverage tables
   generate-tables.R           # Produces LaTeX for all 6 tables
   generate-plot-data.R        # Programmatic data extraction for figures

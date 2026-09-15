@@ -34,10 +34,10 @@ f_res <- unlist(lapply(results_dirs, function(d)
 f_res <- f_res[!grepl("_inference", f_res)]
 cat("Result files:", length(f_res), "\n")
 
-batch_size <- 200
+batch_size <- 50  # vroom holds all fds open in a batch; keep small to stay under OS limit
 batches <- split(f_res, ceiling(seq_along(f_res) / batch_size))
 res_list <- lapply(batches, function(b) {
-  d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
+  d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE, altrep = FALSE)
   d$Specification <- normalize_spec(d$Specification)
   d <- d[!is_old_oracle(d$path, d$Specification), ]
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
@@ -84,7 +84,7 @@ cat("\n\nInference files:", length(f_inf), "\n")
 
 batches_inf <- split(f_inf, ceiling(seq_along(f_inf) / batch_size))
 inf_list <- lapply(batches_inf, function(b) {
-  d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE)
+  d <- vroom(b, id = "path", show_col_types = FALSE, progress = FALSE, altrep = FALSE)
   d$Specification <- normalize_spec(d$Specification)
   d <- d[!is_old_oracle(d$path, d$Specification), ]
   d$eta_type <- str_extract(d$path, "eta-([a-z-]+)_HTE") |> str_remove("eta-") |> str_remove("_HTE")
