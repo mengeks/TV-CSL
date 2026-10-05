@@ -5,7 +5,8 @@
 ##                                           HTE_spec = "linear"), the unpenalized
 ##                                           coxph path with W * (1 + is_junior)
 ##   - TV-CSL (both propensity choices)   -> TV_CSL(lasso_type = "m-regression")
-##       marginal propensity      = prop_score_spec "cox-linear-censored-only"
+##       marginal propensity      = prop_score_spec "cox-linear-censored-only-breslow"
+##                                  (Cox for adoption time, Breslow baseline hazard)
 ##       time-varying propensity  = prop_score_spec "cox-time-varying-prop"
 ##
 ## Analyses (cohorts, tie conventions and estimator wrappers are in copilot_common.R):

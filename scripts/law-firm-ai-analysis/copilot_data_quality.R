@@ -191,17 +191,24 @@ for (ch in names(cohorts)) {
                family = binomial, data = ev)
   ev$a_hat <- as.vector(fitted(m_tvp))
   pt <- summary(m_tvp)$p.table[-1, , drop = FALSE]
-  # Marginal propensity: Cox for adoption among events; a = 1 - exp(-t exp(X alpha))
+  # Marginal propensity: Cox for adoption among events; a = 1 - exp(-H0(t-) exp(X alpha))
+  # with the Breslow baseline (used in the analysis) or H0(t) = t (exponential,
+  # the original "cox-linear-censored-only" spec, shown for reference).
   ev_o <- cc$orig %>% filter(Delta == 1)
   m_marg <- coxph(as.formula(paste("Surv(U_A, Delta_A) ~", paste(cc$xvars, collapse = " + "))),
                   data = ev_o, ties = "breslow")
   alpha <- coef(m_marg); alpha[is.na(alpha)] <- 0
-  a_marg <- 1 - exp(-ev_o$U * exp(as.vector(as.matrix(ev_o[, cc$xvars]) %*% alpha)))
+  risk  <- exp(as.vector(as.matrix(ev_o[, cc$xvars]) %*% alpha))
+  bh    <- basehaz(m_marg, centered = FALSE)
+  H0    <- stepfun(bh$time, c(0, bh$hazard), right = TRUE)
+  a_marg_breslow <- 1 - exp(-H0(ev_o$U) * risk)
+  a_marg_exp     <- 1 - exp(-ev_o$U * risk)
 
   cat("\nFitted propensity at event times (all events):\n")
   ov <- bind_rows(
     tibble::tibble(model = "time-varying", treated = ev$W, a = ev$a_hat),
-    tibble::tibble(model = "marginal", treated = ev_o$treated_event, a = a_marg)) %>%
+    tibble::tibble(model = "marginal (Breslow)", treated = ev_o$treated_event, a = a_marg_breslow),
+    tibble::tibble(model = "marginal (exponential)", treated = ev_o$treated_event, a = a_marg_exp)) %>%
     group_by(model, treated) %>%
     summarise(n = n(), min = min(a), q05 = quantile(a, .05), median = median(a),
               q95 = quantile(a, .95), max = max(a),

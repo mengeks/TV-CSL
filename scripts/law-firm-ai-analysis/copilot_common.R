@@ -205,7 +205,7 @@ run_methods <- function(d, covariates, ties, K = 5L) {
     fixed_cox  = fit_cox_lib(
       dat$orig %>% mutate(tstart = entry_week, tstop = U, W = used_cca), xvars),
     tv_cox     = fit_cox_lib(dat$tv, xvars),
-    tvcsl_marg = fit_tvcsl_lib(dat, xvars, "cox-linear-censored-only", K),
+    tvcsl_marg = fit_tvcsl_lib(dat, xvars, "cox-linear-censored-only-breslow", K),
     tvcsl_tvp  = fit_tvcsl_lib(dat, xvars, "cox-time-varying-prop", K)
   )
   bind_rows(lapply(names(fits), function(m) {

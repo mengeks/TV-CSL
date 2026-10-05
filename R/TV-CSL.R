@@ -1236,6 +1236,29 @@ TV_CSL_nuisance <- function(fold_train,
     a_hat <- as.vector(plogis(predict(event_mod, newdata = fold_test_final, type = "link")))
     fold_test_final <- fold_test_final %>% mutate(a_t_X = a_hat)
 
+  } else if (prop_score_spec == "cox-linear-censored-only-breslow") {
+    # Same treatment-time Cox model as "cox-linear-censored-only" (event
+    # subjects, Surv(U_A, Delta_A) ~ X), but the baseline cumulative hazard is
+    # the Breslow estimate H0(t) rather than the unit-rate exponential H0(t) = t
+    # assumed by calculate_eX():
+    #   a(t, X) = 1 - exp(-H0(t-) * exp(X alpha)).
+    # H0 is left-continuous, so adoption at time t counts as after t,
+    # matching W(t) = 1(A < t).
+    alpha_estimate[is.na(alpha_estimate)] <- 0
+    train_X  <- as.matrix(get_X_vars(df_prop_score, treatment_vars))
+    risk_lp  <- exp(as.vector(train_X %*% alpha_estimate))
+    adopt    <- df_prop_score$Delta_A == 1
+    ev_times <- sort(unique(df_prop_score$U_A[adopt]))
+    dH0 <- vapply(ev_times, function(s) {
+      sum(adopt & df_prop_score$U_A == s) / sum(risk_lp[df_prop_score$U_A >= s])
+    }, numeric(1))
+    H0_fun <- stepfun(ev_times, c(0, cumsum(dH0)), right = TRUE)
+
+    test_X <- as.matrix(get_X_vars(fold_test_final, treatment_vars))
+    prop_scores <- 1 - exp(-H0_fun(fold_test_split$tstop) *
+                             exp(as.vector(test_X %*% alpha_estimate)))
+    fold_test_final <- fold_test_final %>% mutate(a_t_X = prop_scores)
+
   } else {
     print(paste("alpha_estimate: ", alpha_estimate))
     if (prop_score_spec == "cox-intercept-only") {
