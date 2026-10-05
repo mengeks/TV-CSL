@@ -6,6 +6,13 @@
 ## Uses survival::coxph and mgcv::gam directly; sources R/TV-CSL.R for
 ## package loading only.
 
+# ── User configuration ────────────────────────────────────────────────────────
+
+INPUT_FILE  <- here::here("scripts/law-firm-ai-analysis/survival_ccassist_SYNTHETIC.csv")
+OUTPUT_DIR  <- here::here("writeups/tables")
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 suppressPackageStartupMessages({
   library(survival)
   library(dplyr)
@@ -15,10 +22,7 @@ suppressPackageStartupMessages({
 
 # ── 1. Load data ──────────────────────────────────────────────────────────────
 
-df_raw <- read.csv(
-  here::here("scripts/law-firm-ai-analysis/survival_ccassist_SYNTHETIC.csv"),
-  stringsAsFactors = FALSE
-)
+df_raw <- read.csv(INPUT_FILE, stringsAsFactors = FALSE)
 
 # ── 2. Prepare person-level dataset ──────────────────────────────────────────
 
@@ -266,7 +270,7 @@ res_tvp_fmt  <- extract_tvcsl(res_tvp)
 
 # ── 9. Write tables ───────────────────────────────────────────────────────────
 
-tables_dir <- here::here("writeups/tables")
+tables_dir <- OUTPUT_DIR
 dir.create(tables_dir, showWarnings = FALSE, recursive = TRUE)
 
 ## Table 1: Effect of ignoring treatment time
