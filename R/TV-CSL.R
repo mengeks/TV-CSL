@@ -1312,11 +1312,14 @@ fit_TV_CSL <- function(fold_causal_fitted,
     final_formula <- as.formula(paste("Surv(tstart, tstop, Delta) ~", interaction_formula, "+ offset(nu_X)"))
     
     if (final_model_method == "lasso_coxph"){
+      # timefix = FALSE: the test fold is split at every event time, so two continuous times
+      # within ~1e-8 would be merged by aeqSurv into a zero-length interval and stop coxph.
       final_model <- coxph(
         final_formula,
         data = fold_causal_fitted,
         ties = "breslow",
-        init = beta_HTE_first_stage
+        init = beta_HTE_first_stage,
+        timefix = FALSE
       )
       beta_HTE <- coef(final_model)
 
