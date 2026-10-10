@@ -154,10 +154,57 @@ calculate_hazard <- function(t,
   return(hazard)
 }
 
+# Cumulative baseline hazard B(t) = int_0^t h0(s) ds, matching calculate_baseline_hazard().
+calculate_cumulative_baseline_hazard <- function(t, baseline_type = "cosine") {
+  if (baseline_type == "linear") {
+    t^2 / 2
+  } else if (baseline_type == "constant") {
+    t
+  } else {  # Default is "cosine"
+    (t + sin(3 * t) / 3) / 2
+  }
+}
+
+# Inverse of B(t). The cosine baseline has no closed form, so it is solved numerically;
+# B(t) >= (t - 1/3) / 2 gives the upper bracket 2y + 1/3.
+invert_cumulative_baseline_hazard <- function(y, baseline_type = "cosine") {
+  if (baseline_type == "linear") {
+    sqrt(2 * y)
+  } else if (baseline_type == "constant") {
+    y
+  } else {
+    vapply(y, function(yi) {
+      if (!is.finite(yi)) return(Inf)
+      uniroot(function(t) calculate_cumulative_baseline_hazard(t, baseline_type) - yi,
+              lower = 0, upper = 2 * yi + 1/3, tol = 1e-12)$root
+    }, numeric(1))
+  }
+}
+
+# Draw event times exactly by inverting the cumulative hazard of calculate_hazard().
+# (simsurv's 15-node quadrature is inaccurate across the hazard jump at A.)
+# Time-varying: H(t) = exp(eta_0) * [B(min(t, A)) + exp(HTE) * (B(t) - B(min(t, A)))].
+# Returns the same columns as simsurv: id, eventtime (truncated at maxt), status.
+simulate_event_times <- function(covariates, is_time_varying, baseline_type = "linear", maxt = 20) {
+  n <- nrow(covariates)
+  y <- rexp(n) * exp(-covariates$eta_0)          # = B(T) if treatment had no effect
+  if (is_time_varying) {
+    B_A <- calculate_cumulative_baseline_hazard(covariates$A, baseline_type)
+    after <- y > B_A
+    y[after] <- B_A[after] + (y[after] - B_A[after]) * exp(-covariates$HTE[after])
+  } else {
+    y <- y * exp(-covariates$W * covariates$HTE)
+  }
+  eventtime <- invert_cumulative_baseline_hazard(y, baseline_type)
+  data.frame(id        = covariates$id,
+             eventtime = pmin(eventtime, maxt),
+             status    = as.numeric(eventtime < maxt))
+}
 
 
 
-generate_treatment <- 
+
+generate_treatment <-
   function(n, X, is_time_varying, difficulty = "simple") {
 
   simple_fn <- function(X) X[, 2] + X[, 3]
@@ -331,32 +378,17 @@ generate_simulated_data <-
   verbose_print(sprintf("Censoring times generated in %.2f seconds.", as.numeric(end_time - start_time)), 1)
   
   
-  verbose_print(paste0("baseline_type passed to generate_simulated_data is:    ", baseline_type), 2) 
-  verbose_print("Step 3: Defining the baseline hazard function...", 2)
-  hazard_function <- function(t, x, betas, ...) {
-    verbose_print(paste0("baseline_type passed to hazard_function is:    ", baseline_type), 2) 
-    # calculate_hazard(
-    #   t, x,
-    #   is_time_varying = is_time_varying, 
-    #   baseline_type = baseline_type, 
-    #   eta_type = eta_type,
-    #   linear_intercept = linear_intercept,
-    #   linear_slope_multiplier = linear_slope_multiplier)  # Passing baseline_type and eta_type
-    calculate_hazard(
-      t, x,
-      is_time_varying = is_time_varying, 
-      baseline_type = baseline_type)
-  }
+  verbose_print(paste0("baseline_type passed to generate_simulated_data is:    ", baseline_type), 2)
   verbose_print(head(covariates), 1)
-  
-  # Step 4: Simulate survival data
-  verbose_print("Step 4: Simulating survival data...", 2)
+
+  # Step 3: Simulate survival data by exact inversion of the cumulative hazard
+  verbose_print("Step 3: Simulating survival data...", 2)
   start_time <- Sys.time()
-  simulated_data <- simsurv(
-    hazard = hazard_function,
-    x = covariates,
-    interval = c(1e-22, 500),
-    maxt = max_censoring_time
+  simulated_data <- simulate_event_times(
+    covariates      = covariates,
+    is_time_varying = is_time_varying,
+    baseline_type   = baseline_type,
+    maxt            = max_censoring_time
   )
   end_time <- Sys.time()
   verbose_print(sprintf("Survival data simulated in %.2f seconds.", as.numeric(end_time - start_time)), 1)
@@ -396,7 +428,9 @@ post_process <- function(simulated_data,
   verbose_print("Step 2: Calculating observed times and event indicators...", 2)
   processed_data <- processed_data %>%
     mutate(U = pmin(eventtime, C),  # Observed time is the minimum of event time and censoring time
-           Delta = as.numeric(eventtime <= C))  # Indicator for event before censoring
+           # Event before censoring; status == 0 means still alive at maxt (eventtime was truncated
+           # to maxt), which must stay censored even when C == maxt.
+           Delta = as.numeric(eventtime <= C & status == 1))
   
   # Step 3: Rename eventtime to T
   verbose_print("Step 3: Renaming eventtime to T...", 2)
@@ -430,19 +464,26 @@ generate_and_save_data <-
         "eta_type:", params$eta_type, 
         "HTE_type:", params$HTE_type, "\n")
     
-    simulated_data_i_n <- 
+    # Optional params fall back to generate_simulated_data()'s defaults when absent.
+    param_or <- function(name, default) if (is.null(params[[name]])) default else params[[name]]
+
+    simulated_data_i_n <-
       generate_simulated_data(
-        n, 
-        is_time_varying = params$is_time_varying, 
+        n,
+        is_time_varying = params$is_time_varying,
         light_censoring = params$light_censoring,
         lambda_C = params$lambda_C,
         p = params$p,
+        baseline_type = param_or("baseline_type", "linear"),
         eta_type = params$eta_type,
-        X_distribution = params$X_distribution, 
+        X_distribution = params$X_distribution,
         X_cov_type = params$X_cov_type,
         tx_difficulty = params$tx_difficulty,
         HTE_type = params$HTE_type,
-        seed_value = params$seed_value,
+        linear_intercept = param_or("linear_intercept", 0),
+        linear_slope_multiplier = param_or("linear_slope_multiplier", 2.5),
+        linear_HTE_multiplier = param_or("linear_HTE_multiplier", 1),
+        seed_value = params$seed,
         verbose = verbose
       )
     
