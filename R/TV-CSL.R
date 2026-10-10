@@ -1179,9 +1179,9 @@ TV_CSL_nuisance <- function(fold_train,
 
   } else if (prop_score_spec == "cox-time-varying-oracle") {
     # True analytical oracle for a_t(x) = P{W(t)=1 | event at t, X=x}.
-    # DGP: A|X ~ Exp(r(x)) with r(x)=exp(x2+x3), h0(t)=t, tau(x)=x1+x2+x3.
+    # DGP: A|X ~ Exp(r(x)) with r(x)=exp(x2+x3), h0(t)=t, tau(x)=HTE column (m*(x1+x2+x3)).
     # Formula (same for linear and non-linear eta_0; only eta_0(x) value differs):
-    #   logit a_t(x) = x1+2*x2+2*x3 + r*t - d*t^2 + log I(t,x)
+    #   logit a_t(x) = log r + tau + r*t - d*t^2 + log I(t,x)
     # where r = exp(x2+x3), d(x) = 0.5*exp(eta_0(x))*(exp(tau(x))-1),
     #       I(t,x) = integral_0^t exp(d*s^2 - r*s) ds.
     # Uses true_eta_0 (DGP value) rather than the first-stage lasso estimate.
@@ -1197,7 +1197,7 @@ TV_CSL_nuisance <- function(fold_train,
         error = function(e) NA_real_
       )
       if (is.na(stable_int) || stable_int <= 0) return(0.5)
-      plogis(x1 + 2*x2 + 2*x3 + r * t - d * t^2 + M + log(stable_int))
+      plogis(log(r) + tau + r * t - d * t^2 + M + log(stable_int))
     }
     a0_hat <- mapply(compute_true_a_t,
                      t         = fold_test_final$tstop,
