@@ -22,6 +22,8 @@ project_dir="/homes2/xmeng/TV-CSL"
 json_file="${project_dir}/${1}"
 
 module load R/4.3.2
+# Multithreaded BLAS oversubscribes the single allocated core (~3x slower complex-spec fits).
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 mkdir -p "${project_dir}/scripts/TV-CSL/logs"
 cd "${project_dir}"

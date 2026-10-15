@@ -1149,6 +1149,12 @@ TV_CSL_nuisance <- function(fold_train,
   }
   fold_test$eta_1 <- lasso_ret$y_1_pred
   fold_test$eta_0 <- lasso_ret$y_0_pred
+  # Simulation diagnostic (off by default): options(tvcsl.true_eta = TRUE) replaces the
+  # first-stage outcome model by the DGP's eta_0 and eta_0 + HTE.
+  if (isTRUE(getOption("tvcsl.true_eta")) && all(c("true_eta_0", "HTE") %in% names(fold_test))) {
+    fold_test$eta_0 <- fold_test$true_eta_0
+    fold_test$eta_1 <- fold_test$true_eta_0 + fold_test$HTE
+  }
   
   
   # 3.2 Join the data

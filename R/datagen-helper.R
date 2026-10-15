@@ -34,9 +34,17 @@ calculate_eta <- function(x,
   
   p <- length(x)
   
+  # "smooth-non-linear": non-additive but within reach of the complex (spline + interaction) spec.
+  # "blend-<w>", e.g. "blend-0.5": w * "non-linear" + (1 - w) * "smooth-non-linear" (difficulty knob).
+  eta_hard   <- function(x) { sigma <- function(u) 2 / (1 + exp(-12 * (u - 0.5))); (-3/4) * sigma(x[1]) * sigma(x[2]) }
+  eta_smooth <- function(x) 0.75 * (sin(x[1]) + 0.5 * x[2]^2 + 0.5 * x[1] * x[3])
   if (eta_type == "non-linear") {
-    sigma <- function(x) 2 / (1 + exp(-12 * (x - 0.5)))
-    eta_0 <- (-3/4) * sigma(x[1]) * sigma(x[2])
+    eta_0 <- eta_hard(x)
+  } else if (eta_type == "smooth-non-linear") {
+    eta_0 <- eta_smooth(x)
+  } else if (startsWith(eta_type, "blend-")) {
+    w <- as.numeric(sub("^blend-", "", eta_type))
+    eta_0 <- w * eta_hard(x) + (1 - w) * eta_smooth(x)
   } else if (eta_type == "linear") {
     eta_0 <- linear_intercept + linear_slope_multiplier * sum(sapply(1:p, function(j) x[j] / j))
   }

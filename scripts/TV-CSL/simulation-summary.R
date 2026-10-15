@@ -2,15 +2,10 @@ suppressPackageStartupMessages({
   library(vroom); library(dplyr); library(stringr)
 })
 
-# Results directories, in priority order.
-# results/ accumulates new clean runs from run-all.sh.
-# Archive dirs hold historical data and are used until results/ is fully populated.
-# Non-existent dirs are silently skipped.
+# Results directory. Only runs on the fixed data generator (Oct 2026) belong here;
+# results-archive-* hold runs on the old, flawed data and must not be mixed in.
 results_dirs <- c(
-  "scripts/TV-CSL/results",                      # new clean runs (target for run-all.sh)
-  "scripts/TV-CSL/results-archive-2026-08",       # main methods (marg-prop, intercept-only, risk-set)
-  "scripts/TV-CSL/results-archive-tvprop-2026-08",# time-varying-prop + OLD contaminated oracle
-  "scripts/TV-CSL/results-archive-oracle-2026-08" # new analytical oracle
+  "scripts/TV-CSL/results"
 )
 results_dirs <- results_dirs[dir.exists(results_dirs)]
 cat("Reading from dirs:\n"); cat("  ", results_dirs, sep = "\n  "); cat("\n")
