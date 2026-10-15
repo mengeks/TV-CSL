@@ -1,5 +1,5 @@
 # plot-results.R
-# Generates two summary plots from simulation results.
+# Generates two summary plots from simulation results (coverage averages beta_1..beta_3).
 # Run from project root: Rscript scripts/TV-CSL/plot-results.R
 #
 # Output:
