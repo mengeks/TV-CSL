@@ -52,17 +52,53 @@ The simulations compare linear and nonlinear baseline log-risk functions (η₀)
 
 This repository contains the research implementation of TV-CSL. The main implementation is in [`R/TV-CSL.R`](R/TV-CSL.R).
 
-### 1. Demo with Synthetic Data
+### 1. Quick Demo
 
-From the repository root:
+From the repository root, run `Rscript demo.R`, or try the example below. It uses the simulation generator and core estimator to recover the heterogeneous log hazard ratio `tau(x) = x1 + x2 + x3` from 500 synthetic subjects.
 
-```bash
-Rscript demo.R
+`A` is treatment-adoption time, `U` is observed follow-up time, and `Delta` indicates an observed event. `create_pseudo_dataset()` splits follow-up at adoption so treatment status changes over time.
+
+```r
+suppressPackageStartupMessages({
+  library(mgcv)
+  source("R/datagen-helper.R")
+  source("scripts/TV-CSL/time-varying-estimate.R")
+})
+
+# 1. Simulate survival data with tau(x) = x1 + x2 + x3.
+dat <- generate_simulated_data(
+  n = 500, eta_type = "linear", HTE_type = "linear", seed_value = 123
+)
+tv <- create_pseudo_dataset(dat)
+
+# 2. Fit TV-CSL with five-fold cross-fitting.
+invisible(capture.output(fit <- TV_CSL(
+  train_data = tv, test_data = dat, train_data_original = dat,
+  HTE_type = "linear", eta_type = "linear", K = 5,
+  prop_score_spec = "cox-time-varying-prop",
+  lasso_type = "S-lasso", regressor_spec = "linear",
+  final_model_method = "lasso_coxph", HTE_spec = "linear", verbose = 0
+)))
+
+# 3. Compare estimated log-hazard-ratio coefficients with the truth.
+results <- data.frame(
+  term = c("Intercept", "X.1", "X.2", "X.3"),
+  truth = c(0, 1, 1, 1), estimate = round(unname(fit$beta_HTE), 3)
+)
+print(results, row.names = FALSE)
 ```
 
-The demo uses bundled synthetic lawyer-level data and the same core estimation functions used in the enterprise application.
+Example output:
 
-The synthetic data are provided for demonstration; they do not reproduce the confidential empirical findings.
+```text
+      term truth estimate
+ Intercept     0   -0.033
+       X.1     1    0.822
+       X.2     1    1.168
+       X.3     1    1.149
+```
+
+The intercept and slopes define the estimated treatment effect on the log-hazard-ratio scale; this output is from synthetic data.
 
 ### 2. Simulation Study
 
@@ -84,7 +120,7 @@ A synthetic dataset is included for testing and demonstration. The proprietary e
 
 ## Requirements
 
-R packages include `survival`, `glmnet`, `tidyverse`, `mgcv`, `here`, and `jsonlite`.
+R packages include `survival`, `glmnet`, `tidyverse`, `mgcv`, `here`, `jsonlite`, `simsurv`, and `MASS`.
 
 ## Citation
 
