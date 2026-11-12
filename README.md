@@ -1,7 +1,7 @@
 # TV-CSL: Time-Varying Causal Survival Learning
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-TV-CSL is an R package for estimating causal effects in survival analysis settings with time-varying treatments. This package implements the methods described in the paper "Time-Varying Causal Survival Learning" by Meng & Bojinov.
+TV-CSL is a research implementation for estimating causal effects in survival analysis settings with time-varying treatments. It implements the methods described in the paper "Time-Varying Causal Survival Learning" by Meng & Bojinov.
 
 ## Overview
 
@@ -12,119 +12,55 @@ Time-Varying Causal Survival Learning (TV-CSL) uses double machine learning meth
 - Observational studies with time-varying interventions
 - Business applications such as customer conversion after free trials
 
-## Installation
+## Paper
 
-```r
-# Install required packages
-install.packages(c("survival", "glmnet", "dplyr", "splines"))
+**Time-Varying Causal Survival Learning**
 
-# Clone the repository
-# git clone https://github.com/yourusername/tvcsl.git
+Xiang Meng and Iavor Bojinov
 
-# Source the package
-source("R/tvcsl-package.R")
+[Latest manuscript](https://mengeks.github.io/files/Time_Varying_Causal_Survival_Learning-9.pdf) | [arXiv](https://arxiv.org/abs/2503.00730)
+
+## Code and Reproducibility
+
+This repository contains the research implementation of TV-CSL. The main implementation is in [`R/TV-CSL.R`](R/TV-CSL.R).
+
+### 1. Demo with Synthetic Data
+
+From the repository root:
+
+```bash
+Rscript demo.R
 ```
 
-## Quick Start Example
+The demo uses bundled synthetic lawyer-level data and the same core estimation functions used in the enterprise application.
 
-```r
-library(survival)
-library(dplyr)
+The synthetic data are provided for demonstration; they do not reproduce the confidential empirical findings.
 
-# Source the package
-source("R/tvcsl-package.R")
+### 2. Simulation Study
 
-# Generate some simulated data
-set.seed(123)
-sim_data <- generate_simple_data(n = 500)
+The simulation pipeline is located in [`scripts/TV-CSL/`](scripts/TV-CSL/).
 
-# Create time-varying dataset
-data_tv <- create_time_varying_dataset(
-  data = sim_data,
-  event_time = "time_to_event",
-  event = "event",
-  tx_time = "time_to_tx",
-  covariates = c("age", "comorbidity", "biomarker"),
-  id_col = "id"
-)
+See the [simulation replication guide](scripts/TV-CSL/README.md) for the configurations, scripts, and result-generation workflow.
 
-# Fit a TV-CSL model
-model <- tvcsl(
-  formula = Surv(tstart, tstop, status) ~ age + comorbidity + biomarker,
-  data = data_tv,
-  treatment_time = "time_to_tx",
-  treatment_effect_form = "linear"
-)
+Full simulation runs use SLURM and require cluster-specific configuration.
 
-# View results
-summary(model)
+### 3. Enterprise AI Adoption Analysis
 
-# Make predictions for new patients
-new_patients <- data.frame(
-  age = c(45, 65),
-  comorbidity = c(2, 3),
-  biomarker = c(1.2, 0.8)
-)
-predict(model, new_patients)
-```
+The analysis code is in [`scripts/law-firm-ai-analysis/`](scripts/law-firm-ai-analysis/).
 
-### Sample Output
+The main analysis using the core TV-CSL implementation is:
 
-When running `summary(model)`, you'll see results similar to:
+[`copilot_analysis_tvcsl_lib.R`](scripts/law-firm-ai-analysis/copilot_analysis_tvcsl_lib.R)
 
-```
-Time-Varying Causal Survival Learning (TV-CSL)
---------------------------------------------
+A synthetic dataset is included for testing and demonstration. The proprietary enterprise data are not publicly available.
 
-Model Specification:
-  Treatment effect form:  linear 
-  Baseline hazard form:  linear 
-  Propensity model:  cox-linear 
-  Outcome model:  s-learner 
-  Final model method:  coxph 
-  Cross-validation folds:  5 
+## Requirements
 
-Covariates:
-  age, comorbidity, biomarker 
-
-Treatment Effect Coefficients:
-  Intercept:  -0.5132 
-  age:  0.3871 
-  comorbidity:  0.1284 
-  biomarker:  -0.289 
-```
-
-## Key Functions
-
-### 1. Data Preparation
-- `create_time_varying_dataset()`: Transforms standard survival data into time-varying format
-
-### 2. Model Fitting
-- `tvcsl()`: Main function for fitting TV-CSL models
-- `quick_tvcsl()`: Simplified interface with sensible defaults
-
-### 3. Evaluation and Prediction
-- `predict.tvcsl()`: Make predictions with fitted models
-- `evaluate_tvcsl()`: Calculate performance metrics for model evaluation
-
-## Documentation
-
-For complete documentation, see the function help pages by typing `?function_name` after loading the package.
-
-## Advantages Over Traditional Methods
-
-1. **Double Machine Learning**: Explicitly models waiting time for treatments, incorporating valuable information that improves accuracy
-2. **Flexible Modeling**: Uses modern machine learning techniques (lasso) to better capture complex relationships in baseline hazards
-3. **Proper Time-Varying Treatment**: Correctly accounts for the variable timing of treatment adoption
-4. **Robustness to Confounding**: More robust to unmeasured confounding factors through orthogonalization techniques
+R packages include `survival`, `glmnet`, `tidyverse`, `mgcv`, `here`, and `jsonlite`.
 
 ## Citation
 
-If you use this package in your research, please cite:
-
-```
-Meng, X., & Bojinov, I. (2025). Time-Varying Causal Survival Learning.
-```
+Meng, X., & Bojinov, I. (2026). *Time-Varying Causal Survival Learning*. Manuscript.
 
 ## License
 
