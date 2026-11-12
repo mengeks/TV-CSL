@@ -1,0 +1,26 @@
+\begin{table}[ht]
+\centering
+\caption{Cox Estimates That Ignore and Include Transplant Time}
+\label{tab:impact-time-varying-HTE}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{l|cc|cc}
+\toprule
+ & \multicolumn{2}{c|}{Ignore transplant time}
+ & \multicolumn{2}{c}{Include transplant time} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Effect & Estimate (95\% CI) & $p$-value & Estimate (95\% CI) & $p$-value \\
+\midrule
+Transplant & -1.648 (-2.207, -1.089) & $<$0.001 & 0.020 (-0.616, 0.657) & 0.951 \\
+Age $\times$ transplant & -0.228 (-0.782, 0.326) & 0.420 & 0.296 (-0.223, 0.816) & 0.263 \\
+Year $\times$ transplant & 0.143 (-0.360, 0.645) & 0.578 & 0.394 (-0.116, 0.904) & 0.130 \\
+\bottomrule
+\end{tabular}
+}
+\par\smallskip
+\begin{minipage}{\linewidth}
+\footnotesize
+Estimates are log hazard ratios for death; negative values indicate lower mortality
+after transplant. Age and year of acceptance are standardized. All models adjust
+for age, year of acceptance and prior surgery; prior surgery is not an effect modifier.
+\end{minipage}
+\end{table}

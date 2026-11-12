@@ -1,5 +1,11 @@
+# Paper writing and writeups
 writeups/
 refs/
+## interim writeup
+risk-set-adjust-tv-csl.aux
+risk-set-adjust-tv-csl.log
+risk-set-adjust-tv-csl.out
+risk-set-adjust-tv-csl.pdf
 
 # History files
 .Rhistory
@@ -12,7 +18,12 @@ slurm-logs/
 
 # Data
 data/
+data-archive-pre-fix/
 
+# Data analysis results
+scripts/law-firm-ai-analysis/alina-result-7Oct2026/
+scripts/law-firm-ai-analysis/data-quality/
+scripts/law-firm-ai-analysis/tables-tvcsl-lib/
 
 ## Ignore results
 tables
@@ -21,6 +32,12 @@ results_*/
 results-archive-*/
 results-integration-test/
 tables-and-plots
+scripts/TV-CSL/centering-sweep-2026-10-10/res/
+scripts/TV-CSL/centering-sweep-blend-2026-10-14/res/
+scripts/TV-CSL/diagnostics-2026-10-08/
+scripts/TV-CSL/eta-check-2026-10-10/res/
+scripts/TV-CSL/interim-2026-10-15/
+scripts/TV-CSL/propensity-distance-2026-10-10/res/
 
 ## Ignore simulation logs and intermediate files
 scripts/CSF-understanding/*.log
