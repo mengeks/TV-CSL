@@ -20,6 +20,34 @@ Xiang Meng and Iavor Bojinov
 
 [Latest manuscript](https://mengeks.github.io/files/Time_Varying_Causal_Survival_Learning-9.pdf) | [arXiv](https://arxiv.org/abs/2503.00730)
 
+## Method at a Glance
+
+TV-CSL estimates heterogeneous treatment effects on the log-hazard scale when subjects adopt treatment at different times. The figures below are Figures 1, 3, and 4 from the manuscript.
+
+### Why treatment timing matters
+
+Classifying eventual adopters as treated from baseline misattributes their untreated follow-up. Treatment status must instead be updated at each event time for everyone still at risk.
+
+![Figure 1: Cox partial-likelihood contributions with treatment fixed at baseline versus updated at actual adoption times.](figures/readme/figure-1-treatment-timing.png)
+
+*Figure 1. Ignoring adoption timing can reverse the treatment-effect conclusion.*
+
+### How TV-CSL works
+
+TV-CSL combines flexible outcome-risk estimation with a time-varying propensity that centers treatment status among subjects failing at each event time. Subject-level cross-fitting and an orthogonal Cox score reduce sensitivity to errors in these estimated functions when estimating treatment-effect heterogeneity.
+
+### When it helps
+
+The simulations compare linear and nonlinear baseline log-risk functions (η₀), using linear and flexible fitted specifications, respectively, with 1,000 replications per setting.
+
+![Figure 3: Mean squared error versus sample size under linear and nonlinear baseline risk.](figures/readme/figure-3-mse.png)
+
+*Figure 3. TV-CSL with marginal or time-varying propensity improves accuracy at larger sample sizes under nonlinear baseline risk; direct Cox estimation is more accurate under linear baseline risk.*
+
+![Figure 4: Empirical coverage of 95% confidence intervals versus sample size under linear and nonlinear baseline risk.](figures/readme/figure-4-coverage.png)
+
+*Figure 4. Under nonlinear baseline risk, TV-CSL with marginal or time-varying propensity stays much closer to nominal 95% coverage than Cox or intercept-only centering. Coverage uses information-based standard errors and is averaged over the three treatment-effect coefficients.*
+
 ## Code and Reproducibility
 
 This repository contains the research implementation of TV-CSL. The main implementation is in [`R/TV-CSL.R`](R/TV-CSL.R).
