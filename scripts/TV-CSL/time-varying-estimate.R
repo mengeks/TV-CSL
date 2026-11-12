@@ -22,6 +22,10 @@ create_pseudo_dataset <- function(survival_data) {
 
   covariates <- setdiff(colnames(survival_data), c("U", "Delta", "A", "id"))
 
+  # coxph rejects (near-)zero-length intervals. Never drop an event for this: if adoption
+  # falls within eps of U, move the split to U - eps (shifts A by at most eps).
+  eps <- 1e-6
+
   for (i in 1:nrow(survival_data)) {
     U_i     <- survival_data$U[i]
     Delta_i <- survival_data$Delta[i]
@@ -32,11 +36,12 @@ create_pseudo_dataset <- function(survival_data) {
     if (U_i <= A_i && A_i <= Inf) {
       new_rows <- tibble(tstart = 0, tstop = U_i, Delta = Delta_i, W = 0)
     } else if (A_i < U_i) {
+      A_split <- min(A_i, U_i - eps)
       new_rows <- tibble(
-        tstart = c(0,   A_i),
-        tstop  = c(A_i, U_i),
-        Delta  = c(0,   Delta_i),
-        W      = c(0,   1)
+        tstart = c(0,       A_split),
+        tstop  = c(A_split, U_i),
+        Delta  = c(0,       Delta_i),
+        W      = c(0,       1)
       )
     }
 
@@ -47,10 +52,9 @@ create_pseudo_dataset <- function(survival_data) {
     pseudo_dataset <- bind_rows(pseudo_dataset, new_rows)
   }
 
+  # Drop only event-free intervals shorter than eps (negligible at-risk time).
   pseudo_dataset %>%
-    mutate(t = tstop - tstart) %>%
-    filter(t > 0.001) %>%
-    select(-t)
+    filter(tstop - tstart > eps | Delta == 1)
 }
 
 #' Convert raw survival data to the format expected by Cox/lasso estimators.

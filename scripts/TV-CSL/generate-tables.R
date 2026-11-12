@@ -94,8 +94,7 @@ make_full_mse_table <- function(et, label, caption) {
 # ---- Full coverage table -----------------------------------------------------
 
 make_full_cov_table <- function(et, best_eta_spec, label, caption) {
-  # best_eta_spec: "linear" for linear DGP, "complex" for non-linear DGP (TV-CSL)
-  # S-Cox/Lasso: always use the best available spec
+  # best_eta_spec: "linear" for linear DGP, "complex" for non-linear DGP (all methods)
 
   cov_avg <- cov_agg |>
     dplyr::filter(coef_idx %in% 2:4) |>
@@ -120,7 +119,7 @@ make_full_cov_table <- function(et, best_eta_spec, label, caption) {
       PropSpec = prop_label(Spec)
     ) |>
     dplyr::filter(
-      (MethodLabel %in% c("S-Cox", "S-Lasso") & EtaSpec == "linear") |
+      (MethodLabel %in% c("S-Cox", "S-Lasso") & EtaSpec == best_eta_spec) |
       (MethodLabel == "TV-CSL" & EtaSpec == best_eta_spec)
     ) |>
     dplyr::select(MethodLabel, EtaSpec, PropSpec, n, cov_naive, cov_sandwich) |>
@@ -258,7 +257,7 @@ make_main_cov_table <- function() {
       dplyr::group_by(Method, Spec, n) |>
       dplyr::summarise(cov_naive = mean(cov_naive, na.rm = TRUE), .groups = "drop") |>
       dplyr::filter(
-        (Method == "S-Cox"  & Spec == "linear") |
+        (Method == "S-Cox"  & Spec == eta_spec) |
         (Method == "TV_CSL" & Spec == paste0(eta_spec, " / linear-censored-only")) |
         (Method == "TV_CSL" & Spec == paste0(eta_spec, " / intercept-only")) |
         (Method == "TV_CSL" & Spec == paste0(eta_spec, " / time-varying-prop")) |

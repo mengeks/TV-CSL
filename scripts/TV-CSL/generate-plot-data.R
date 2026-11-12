@@ -49,7 +49,9 @@ agg_labelled <- agg |>
   dplyr::filter(!is.na(PlotLabel))
 
 cov_agg_labelled <- cov_agg |>
-  dplyr::filter(coef_idx == 2) |>   # X.1 coefficient (first non-intercept; true β=1)
+  dplyr::filter(coef_idx %in% 2:4) |>   # beta_1..beta_3 (true value 1), averaged as in the tables
+  dplyr::group_by(Method, Spec, eta_type, n) |>
+  dplyr::summarise(cov_naive = mean(cov_naive, na.rm = TRUE), .groups = "drop") |>
   dplyr::rowwise() |>
   dplyr::mutate(PlotLabel = plot_label(Method, Spec, eta_type)) |>
   dplyr::ungroup() |>

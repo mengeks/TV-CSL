@@ -1,0 +1,27 @@
+\begin{table}[ht]
+\centering
+\caption{Semi-Synthetic Bias and Coverage at the Stanford Sample Size}
+\label{tab:stanford-plasmode}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{2}{c}{Transplant ($0.02$)} & \multicolumn{2}{c}{Age $\times$ transplant ($0.30$)} & \multicolumn{2}{c}{Year $\times$ transplant ($0.39$)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Method & Bias & Coverage & Bias & Coverage & Bias & Coverage \\
+\midrule
+Cox, ignoring transplant time & -1.549 & 0.00 & -0.235 & 0.81 & -0.099 & 0.87 \\
+Time-varying Cox & -0.016 & 0.96 & 0.009 & 0.96 & 0.008 & 0.95 \\
+TV-CSL, marginal propensity & -0.171 & 0.91/0.74 & 0.159 & 0.90/0.64 & 0.193 & 0.90/0.71 \\
+TV-CSL, time-varying propensity & -0.155 & 0.91/0.72 & 0.167 & 0.91/0.60 & 0.187 & 0.89/0.71 \\
+\bottomrule
+\end{tabular}
+}
+\par\smallskip
+\begin{minipage}{\linewidth}
+\footnotesize
+Results over 500 replicates of $n = 103$. True values (in parentheses) are the
+time-varying Cox estimates from the real data. Covariates and censoring dates are the
+real ones; transplant and death times are redrawn from Cox models fitted to the real data.
+Coverage is of nominal 95\% intervals; TV-CSL entries are information/sandwich.
+\end{minipage}
+\end{table}
